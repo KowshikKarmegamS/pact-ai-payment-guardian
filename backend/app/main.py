@@ -8,7 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.catalog import seed_catalog
+from app.catalog import seed_catalog, seed_mandates
 from app.config import get_settings
 from app.database import SessionLocal, init_db
 from app.routers import audit, health, mandates, payments, products, proposals
@@ -23,10 +23,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # 1. Initialize DB tables
     init_db()
 
-    # 2. Seed product catalog if empty
+    # 2. Seed product catalog and initial mandates if empty
     db = SessionLocal()
     try:
         seed_catalog(db)
+        seed_mandates(db)
     finally:
         db.close()
 

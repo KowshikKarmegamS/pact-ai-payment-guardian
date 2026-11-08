@@ -150,33 +150,93 @@ SEED_PRODUCTS = [
         "image_url": "https://images.unsplash.com/photo-1598289431512-b97b0917affc?w=500&auto=format&fit=crop&q=60",
         "in_stock": True,
     },
+    {
+        "name": "Logitech MX Master 3S Advanced Wireless Mouse",
+        "description": "Ergonomic wireless performance mouse with 8K DPI any-surface tracking, MagSpeed electromagnetic scrolling, and quiet clicks. Ideal for CAD, coding, and precision work.",
+        "price": Decimal("99.99"),
+        "category": "Electronics",
+        "merchant": "TechHub",
+        "image_url": "https://images.unsplash.com/photo-1615663245857-ac93bb7c39e7?w=500&auto=format&fit=crop&q=60",
+        "in_stock": True,
+    },
+    {
+        "name": "Keychron Q1 Pro Wireless Custom Mechanical Keyboard",
+        "description": "Full-metal CNC aluminum wireless custom mechanical keyboard with double-gasket design, hot-swappable switches, and QMK/VIA support.",
+        "price": Decimal("199.99"),
+        "category": "Electronics",
+        "merchant": "TechHub",
+        "image_url": "https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=500&auto=format&fit=crop&q=60",
+        "in_stock": True,
+    },
+    {
+        "name": "Sony PlayStation 5 Pro Digital Edition",
+        "description": "Next-gen gaming console with advanced ray tracing, 4K 120Hz support, and ultra-high speed SSD.",
+        "price": Decimal("699.99"),
+        "category": "Gaming Consoles",
+        "merchant": "Sony Direct",
+        "image_url": "https://images.unsplash.com/photo-1606813907291-d86efa9b94db?w=500&auto=format&fit=crop&q=60",
+        "in_stock": True,
+    },
+]
+
+SEED_MANDATES = [
+    {
+        "name": "Q1 Developer Equipment & Workstation Peripherals",
+        "max_budget": Decimal("750.00"),
+        "allowed_merchants": ["TechHub", "BookWorld", "HomeEssentials", "MicroCenter", "GitHub"],
+        "allowed_categories": ["Electronics", "Books", "Developer Tools"],
+        "restrictions": {
+            "max_price_per_item": 300.00,
+            "prohibited_keywords": ["playstation", "xbox", "console", "game", "nintendo"],
+            "prohibited_merchants": ["Sony Direct", "GameStop"],
+        },
+        "is_active": True,
+    },
+    {
+        "name": "Engineering Books & Technical Learning",
+        "max_budget": Decimal("250.00"),
+        "allowed_merchants": ["BookWorld", "TechHub"],
+        "allowed_categories": ["Books", "Electronics"],
+        "restrictions": {
+            "max_price_per_item": 75.00,
+        },
+        "is_active": True,
+    },
 ]
 
 
 def seed_catalog(db: Session) -> List[Product]:
-    """Populate database with initial product catalog if empty.
-
-    Args:
-        db: Active SQLAlchemy database session.
-
-    Returns:
-        List of all Product objects currently in the database.
-    """
-    existing_count = db.query(Product).count()
-    if existing_count > 0:
-        return db.query(Product).all()
-
+    """Populate database with initial product catalog if empty."""
     for item in SEED_PRODUCTS:
-        product = Product(
-            name=item["name"],
-            description=item["description"],
-            price=item["price"],
-            category=item["category"],
-            merchant=item["merchant"],
-            image_url=item["image_url"],
-            in_stock=item["in_stock"],
-        )
-        db.add(product)
+        existing = db.query(Product).filter(Product.name == item["name"]).first()
+        if not existing:
+            product = Product(
+                name=item["name"],
+                description=item["description"],
+                price=item["price"],
+                category=item["category"],
+                merchant=item["merchant"],
+                image_url=item["image_url"],
+                in_stock=item["in_stock"],
+            )
+            db.add(product)
 
     db.commit()
     return db.query(Product).all()
+
+
+def seed_mandates(db: Session):
+    """Seed initial default mandates if none exist."""
+    from app.models import Mandate
+    if db.query(Mandate).count() == 0:
+        for m_data in SEED_MANDATES:
+            mandate = Mandate(
+                name=m_data["name"],
+                max_budget=m_data["max_budget"],
+                allowed_merchants=m_data["allowed_merchants"],
+                allowed_categories=m_data["allowed_categories"],
+                restrictions=m_data["restrictions"],
+                is_active=m_data["is_active"],
+            )
+            db.add(mandate)
+        db.commit()

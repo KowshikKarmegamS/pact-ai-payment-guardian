@@ -12,36 +12,17 @@ import {
   AlertOctagon,
   ExternalLink,
 } from 'lucide-react';
-import { Proposal, PolicyResult, ShoppingMessage, Mandate } from '../types';
-import { mockProposals, mockMandates } from '../data/mockData';
+import { ShoppingMessage, Mandate } from '../types';
 import { pactApi } from '../api/pact';
 
 export const ShoppingAssistant: React.FC = () => {
   const [messages, setMessages] = useState<ShoppingMessage[]>([
     {
-      id: 'msg-1',
+      id: 'msg-welcome',
       role: 'assistant',
       content:
-        'Hello! I am your PACT Autonomous Shopping Assistant. Tell me what equipment, software, or peripherals you need. I will research products, evaluate them against your active spending mandate rules, and submit verified purchase proposals for PayPal capture.',
-      timestamp: '12:00 PM',
-    },
-    {
-      id: 'msg-2',
-      role: 'user',
-      content: 'I need a wireless mechanical keyboard for my workstation.',
-      timestamp: '12:02 PM',
-    },
-    {
-      id: 'msg-3',
-      role: 'assistant',
-      content:
-        'I found the Keychron Q1 Pro Wireless Mechanical Keyboard. It complies with your active mandate rules and has passed all Guardian security checks.',
-      timestamp: '12:02 PM',
-      proposal: mockProposals[0],
-      policyResult: {
-        passed: true,
-        violations: [],
-      },
+        'Hello! I am your PACT Autonomous Shopping Assistant. Tell me what equipment, books, or peripherals you need. I will research the product catalog, formulate a purchase proposal, and submit it to the deterministic Guardian Policy Engine for strict validation.',
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
 
@@ -50,8 +31,8 @@ export const ShoppingAssistant: React.FC = () => {
   const [capturedProposals, setCapturedProposals] = useState<Record<string, { captured: boolean; captureId?: string; orderId?: string }>>({});
   const [processingPayment, setProcessingPayment] = useState<string | null>(null);
   const [paypalCheckoutInfo, setPaypalCheckoutInfo] = useState<Record<string, { orderId: string; approveUrl: string }>>({});
-  const [mandates, setMandates] = useState<Mandate[]>(mockMandates);
-  const [selectedMandateId, setSelectedMandateId] = useState<string>(mockMandates[0]?.id || 'man-9821');
+  const [mandates, setMandates] = useState<Mandate[]>([]);
+  const [selectedMandateId, setSelectedMandateId] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Load live mandates on mount
@@ -60,12 +41,12 @@ export const ShoppingAssistant: React.FC = () => {
       .then((data) => {
         if (data && data.length > 0) {
           setMandates(data);
-          const active = data.find((m) => m.is_active);
-          if (active) setSelectedMandateId(active.id);
+          const active = data.find((m) => m.is_active) || data[0];
+          setSelectedMandateId(active.id);
         }
       })
-      .catch(() => {
-        // Keep mock mandates on network error
+      .catch((err) => {
+        console.error('Failed to load mandates from backend:', err);
       });
   }, []);
 
@@ -81,6 +62,11 @@ export const ShoppingAssistant: React.FC = () => {
     const text = textToSend || input;
     if (!text.trim()) return;
 
+    if (!selectedMandateId) {
+      alert('Please select an active spending mandate first.');
+      return;
+    }
+
     const userMsg: ShoppingMessage = {
       id: `msg-${Date.now()}`,
       role: 'user',
@@ -93,7 +79,7 @@ export const ShoppingAssistant: React.FC = () => {
     setIsEvaluating(true);
 
     try {
-      // 1. Attempt live backend call
+      // Live backend call to generate recommendation and evaluate policy
       const res = await pactApi.generateProposal(text, selectedMandateId);
       const assistantMsg: ShoppingMessage = {
         id: `msg-${Date.now() + 1}`,
@@ -104,75 +90,15 @@ export const ShoppingAssistant: React.FC = () => {
         policyResult: res.policy,
       };
       setMessages((prev) => [...prev, assistantMsg]);
-    } catch {
-      // 2. Fallback to client-side simulation if backend is offline
-      const lower = text.toLowerCase();
-      let assistantMsg: ShoppingMessage;
-
-      if (lower.includes('playstation') || lower.includes('console') || lower.includes('game')) {
-        const restrictedProposal: Proposal = {
-          id: `prop-${Math.floor(700 + Math.random() * 100)}`,
-          mandate_id: selectedMandateId,
-          product_id: 99,
-          product_name: 'Sony PlayStation 5 Pro Digital Edition',
-          merchant: 'Sony Direct',
-          category: 'Gaming Consoles',
-          price: 699.99,
-          quantity: 1,
-          total_amount: 699.99,
-          ai_reasoning:
-            'Autonomous Guardian rejected this item: Forbidden under company policy restrictions ("No gaming consoles"). Merchant is also not on whitelist.',
-          status: 'rejected',
-          created_at: new Date().toISOString(),
-        };
-
-        const failedPolicy: PolicyResult = {
-          passed: false,
-          violations: [
-            'Prohibited Category: "Gaming Consoles" violates explicit restriction.',
-            'Unapproved Merchant: "Sony Direct" is not in allowed merchant whitelist.',
-            'Price Limit Exceeded: $699.99 exceeds single peripheral item limit.',
-          ],
-        };
-
-        assistantMsg = {
-          id: `msg-${Date.now() + 1}`,
-          role: 'assistant',
-          content:
-            'I found a match, but the PACT Guardian Policy Engine BLOCKED this proposal due to critical rule violations. Payment authorization is withheld.',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          proposal: restrictedProposal,
-          policyResult: failedPolicy,
-        };
-      } else {
-        assistantMsg = {
-          id: `msg-${Date.now() + 1}`,
-          role: 'assistant',
-          content:
-            `I analyzed your request: "${text}". I have prepared a proposal that complies with your spending mandate constraints and is ready for payment verification.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          proposal: {
-            id: `prop-${Math.floor(700 + Math.random() * 100)}`,
-            mandate_id: selectedMandateId,
-            product_id: 1,
-            product_name: 'Keychron Q1 Pro Wireless Mechanical Keyboard',
-            merchant: 'TechHub',
-            category: 'Electronics',
-            price: 199.99,
-            quantity: 1,
-            total_amount: 199.99,
-            ai_reasoning: 'Verified ergonomic keyboard. Merchant "TechHub" is approved and price is within budget envelope.',
-            status: 'pending',
-            created_at: new Date().toISOString(),
-          },
-          policyResult: {
-            passed: true,
-            violations: [],
-          },
-        };
-      }
-
-      setMessages((prev) => [...prev, assistantMsg]);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Backend request failed';
+      const errorMsg: ShoppingMessage = {
+        id: `msg-${Date.now() + 1}`,
+        role: 'assistant',
+        content: `⚠️ Error from Guardian Backend: ${errorMessage}. Please ensure the FastAPI backend is running on port 8000.`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+      setMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsEvaluating(false);
     }
@@ -182,10 +108,12 @@ export const ShoppingAssistant: React.FC = () => {
   const handleInitiatePayPal = async (proposalId: string) => {
     setProcessingPayment(proposalId);
     try {
-      // Approve on backend first (revalidates mandate and policies)
+      // 1. Approve proposal on backend (revalidates mandate and policies)
       await pactApi.approveProposal(proposalId);
-      // Create PayPal sandbox order
+
+      // 2. Create PayPal sandbox order with exact proposal details
       const orderRes = await pactApi.createPayPalOrder(proposalId);
+
       setPaypalCheckoutInfo((prev) => ({
         ...prev,
         [proposalId]: {
@@ -193,19 +121,14 @@ export const ShoppingAssistant: React.FC = () => {
           approveUrl: orderRes.approve_url,
         },
       }));
-      // Open PayPal sandbox in new tab for buyer checkout
+
+      // 3. Open PayPal sandbox checkout in a new window/tab
       if (orderRes.approve_url) {
         window.open(orderRes.approve_url, '_blank', 'noopener,noreferrer');
       }
-    } catch {
-      // Fallback simulation
-      setPaypalCheckoutInfo((prev) => ({
-        ...prev,
-        [proposalId]: {
-          orderId: `PAYPAL-ORD-${Date.now()}`,
-          approveUrl: 'https://www.sandbox.paypal.com/checkoutnow',
-        },
-      }));
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create PayPal order';
+      alert(`PayPal Order Error: ${errorMessage}`);
     } finally {
       setProcessingPayment(null);
     }
@@ -224,16 +147,9 @@ export const ShoppingAssistant: React.FC = () => {
           orderId: paypalCheckoutInfo[proposalId]?.orderId,
         },
       }));
-    } catch {
-      // Fallback
-      setCapturedProposals((prev) => ({
-        ...prev,
-        [proposalId]: {
-          captured: true,
-          captureId: `CAP-${Math.random().toString(36).substring(2, 9).toUpperCase()}`,
-          orderId: paypalCheckoutInfo[proposalId]?.orderId,
-        },
-      }));
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Payment capture failed';
+      alert(`PayPal Capture Error: ${errorMessage}`);
     } finally {
       setProcessingPayment(null);
     }
@@ -267,6 +183,7 @@ export const ShoppingAssistant: React.FC = () => {
               onChange={(e) => setSelectedMandateId(e.target.value)}
               className="text-xs font-semibold text-slate-700 bg-white px-2.5 py-1 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             >
+              {mandates.length === 0 && <option value="">No Mandates Loaded</option>}
               {mandates.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name} (${Number(m.max_budget).toFixed(2)})
@@ -371,7 +288,7 @@ export const ShoppingAssistant: React.FC = () => {
                           <div className="font-bold flex items-center justify-between">
                             <span>
                               {policy?.passed
-                                ? 'Guardian Policy Verified (Safe to Capture)'
+                                ? 'Guardian Policy Verified (Safe to Authorize)'
                                 : 'Guardian Policy Violations Detected'}
                             </span>
                             <span
@@ -387,7 +304,7 @@ export const ShoppingAssistant: React.FC = () => {
 
                           {policy?.passed ? (
                             <p className="text-[11px] text-emerald-700">
-                              Product, merchant, and total spending satisfy all spending mandate constraints.
+                              Product, merchant, category, and total price satisfy all spending mandate constraints.
                             </p>
                           ) : (
                             <ul className="list-disc list-inside text-[11px] text-rose-700 space-y-0.5 mt-1 font-medium">
@@ -407,17 +324,17 @@ export const ShoppingAssistant: React.FC = () => {
                               <CheckCircle className="w-4 h-4 text-emerald-600" />
                               <span className="font-bold">PayPal Sandbox Payment Captured!</span>
                             </div>
-                            <span className="font-mono text-[11px] text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
-                              ID: {captureState.captureId}
+                            <span className="font-mono text-[11px] text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded font-bold">
+                              Capture ID: {captureState.captureId}
                             </span>
                           </div>
                         ) : checkoutState?.orderId ? (
                           <div className="space-y-2">
                             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-900 flex items-center justify-between">
                               <div>
-                                <span className="font-bold block">PayPal Order Created: {checkoutState.orderId}</span>
+                                <span className="font-bold block">Live PayPal Order: {checkoutState.orderId}</span>
                                 <span className="text-[11px] text-blue-700">
-                                  Approve in PayPal sandbox popup, then confirm capture below.
+                                  Approve in the PayPal checkout window, then click Complete Capture below.
                                 </span>
                               </div>
                               {checkoutState.approveUrl && (
@@ -425,10 +342,10 @@ export const ShoppingAssistant: React.FC = () => {
                                   href={checkoutState.approveUrl}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-[#0070ba] text-white font-bold text-[11px]"
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#0070ba] hover:bg-[#005ea6] text-white font-bold text-xs transition-colors"
                                 >
                                   <span>PayPal Checkout</span>
-                                  <ExternalLink className="w-3 h-3" />
+                                  <ExternalLink className="w-3.5 h-3.5" />
                                 </a>
                               )}
                             </div>
@@ -456,7 +373,7 @@ export const ShoppingAssistant: React.FC = () => {
                             ) : (
                               <DollarSign className="w-4 h-4" />
                             )}
-                            <span>Approve & Authorize via PayPal Sandbox</span>
+                            <span>Human Approve & Authorize via PayPal Sandbox</span>
                           </button>
                         ) : (
                           <button
@@ -464,7 +381,7 @@ export const ShoppingAssistant: React.FC = () => {
                             className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-slate-100 text-slate-400 text-xs font-bold cursor-not-allowed border border-slate-200"
                           >
                             <Lock className="w-4 h-4" />
-                            <span>Approval Disabled (Policy Violations Detected)</span>
+                            <span>Authorization Blocked (Guardian Policy Violations Detected)</span>
                           </button>
                         )}
                       </div>
@@ -487,7 +404,7 @@ export const ShoppingAssistant: React.FC = () => {
                 <Loader2 className="w-4 h-4 animate-spin" />
               </div>
               <div className="flex items-center space-x-2 bg-slate-100 px-4 py-2.5 rounded-2xl rounded-tl-xs">
-                <span>Evaluating merchants, products, and mandate policies...</span>
+                <span>AI evaluating catalog and checking Guardian policy rules...</span>
               </div>
             </div>
           )}
@@ -499,22 +416,22 @@ export const ShoppingAssistant: React.FC = () => {
         <div className="px-6 py-2 bg-slate-50 border-t border-slate-100 flex items-center gap-2 overflow-x-auto text-xs">
           <span className="text-slate-400 font-medium whitespace-nowrap">Try asking:</span>
           <button
-            onClick={() => handleSend('Order a Keychron mechanical keyboard for programming')}
-            className="whitespace-nowrap px-2.5 py-1 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-300 transition-colors cursor-pointer"
+            onClick={() => handleSend('I need an ergonomic mouse for CAD modeling')}
+            className="whitespace-nowrap px-2.5 py-1 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-300 transition-colors cursor-pointer font-medium"
           >
-            Tactile Keyboard (Passes Policy)
+            Ergonomic Mouse (Passes Policy)
+          </button>
+          <button
+            onClick={() => handleSend('Order a Keychron mechanical keyboard for programming')}
+            className="whitespace-nowrap px-2.5 py-1 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-300 transition-colors cursor-pointer font-medium"
+          >
+            Custom Keyboard (Passes Policy)
           </button>
           <button
             onClick={() => handleSend('Can you purchase a PlayStation 5 console for the office?')}
-            className="whitespace-nowrap px-2.5 py-1 rounded-md bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
+            className="whitespace-nowrap px-2.5 py-1 rounded-md bg-white border border-rose-200 text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer font-medium"
           >
             PlayStation 5 (Fails Policy)
-          </button>
-          <button
-            onClick={() => handleSend('I need an ergonomic mouse for CAD modeling')}
-            className="whitespace-nowrap px-2.5 py-1 rounded-md bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-300 transition-colors cursor-pointer"
-          >
-            Logitech MX Master Mouse
           </button>
         </div>
 
@@ -562,7 +479,7 @@ export const ShoppingAssistant: React.FC = () => {
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs space-y-2">
             <div className="font-semibold text-slate-700 flex items-center justify-between">
               <span>Active Spending Mandates</span>
-              <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-mono">
+              <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-mono font-bold">
                 {mandates.filter((m) => m.is_active).length} Active
               </span>
             </div>
@@ -589,31 +506,35 @@ export const ShoppingAssistant: React.FC = () => {
                 <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold flex items-center justify-center shrink-0">
                   2
                 </span>
-                <span>Agent generates structured proposal with merchant & price.</span>
+                <span>AI Agent formulates structured proposal with merchant & price.</span>
               </div>
               <div className="flex gap-2">
                 <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold flex items-center justify-center shrink-0">
                   3
                 </span>
-                <span>Guardian verifies merchant whitelist, category, and budget envelope.</span>
+                <span>Deterministic Guardian verifies whitelist, category, and budget envelope.</span>
               </div>
               <div className="flex gap-2">
                 <span className="w-4 h-4 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold flex items-center justify-center shrink-0">
                   4
                 </span>
-                <span>Only compliant proposals can capture funds via PayPal.</span>
+                <span>Human must explicitly approve before live PayPal checkout can execute.</span>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-800 space-y-1">
+        <div className="p-3 bg-indigo-50 rounded-xl border border-indigo-200 text-xs text-indigo-900 space-y-1">
           <div className="font-bold flex items-center gap-1.5">
-            <AlertOctagon className="w-3.5 h-3.5 text-amber-600" />
-            <span>Hackathon Demo</span>
+            <AlertOctagon className="w-3.5 h-3.5 text-indigo-600" />
+            <span>PayPal Sandbox Live</span>
           </div>
-          <p className="text-[11px] leading-relaxed">
-            Click the preset suggestion buttons above to test immediate policy acceptance vs instant violation rejection with live PayPal Sandbox execution.
+          <p className="text-[11px] leading-relaxed text-indigo-800">
+            Real PayPal Orders API v2 tokens are generated. Click <strong>PayPal Checkout</strong> to log in with your sandbox buyer account:
+            <br />
+            <code className="text-[10px] bg-white/70 px-1 py-0.5 rounded font-mono block mt-1">
+              sb-1r1ra53751334@personal.example.com
+            </code>
           </p>
         </div>
       </div>
