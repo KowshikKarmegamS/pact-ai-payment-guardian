@@ -1,300 +1,363 @@
-"""Proposal generation, policy evaluation, and human approval workflow routes."""
+"""Proposal generation, policy evaluation, human approval and Authorization Receipts."""
 
-import secrets
 from decimal import Decimal
 from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+
 from app.agent import generate_shopping_recommendation
+from app.config import get_settings
 from app.database import get_db
-from app.models import Mandate, Product, Proposal, ProposalStatus
-from app.policy import PolicyEngine
-from app.schemas import PolicyResult, ProposalOut
+from app.models import AuditLog, Mandate, Product, Proposal, ProposalStatus, utc_now
+from app.money import fmt, q
+from app.policy import PolicyEngine, checks_to_json
+from app.schemas import (
+    AuditLogOut,
+    AuthorizationReceipt,
+    PolicyCheck,
+    PolicyResult,
+    ProposalApproval,
+    ProposalOut,
+    ReceiptIntegrity,
+    ReceiptMandate,
+)
 from app.services.audit import log_audit_event
-from app.services.mandate_service import calculate_mandate_budget
+from app.services.authorization import (
+    canonical_snapshot,
+    describe_changes,
+    catalog_drift,
+    expire_approval,
+    fingerprint_of,
+    verify_authorization,
+)
+from app.services.mandate_service import budget_breakdown
 
 router = APIRouter(prefix="/proposals", tags=["Proposals"])
 
+REJECTABLE_STATUSES = (
+    ProposalStatus.AWAITING_HUMAN_APPROVAL,
+    ProposalStatus.HUMAN_APPROVED,
+    ProposalStatus.AWAITING_PAYPAL_BUYER_APPROVAL,
+    ProposalStatus.PAYPAL_BUYER_APPROVED,
+    ProposalStatus.PAYPAL_CANCELLED,
+    ProposalStatus.APPROVAL_EXPIRED,
+)
+
+
+def _fail(http_status: int, code: str, message: str, **extra) -> HTTPException:
+    return HTTPException(status_code=http_status, detail={"code": code, "message": message, **extra})
+
 
 class ShoppingPromptRequest(BaseModel):
-    """Shopping request submitted to the AI agent."""
+    prompt: str = Field(..., min_length=2, max_length=1000, description="Natural-language shopping request")
+    mandate_id: str = Field(..., description="Spending mandate that governs this purchase")
 
-    prompt: str = Field(..., min_length=2, description="User's natural language shopping request")
-    mandate_id: str = Field(..., description="ID of the spending mandate to govern this purchase")
+
+class AIProvenance(BaseModel):
+    provider: str
+    model: Optional[str]
+    fallback_reason: Optional[str]
+    ignored_fields: Optional[List[str]] = None
 
 
 class ProposalGenerationResponse(BaseModel):
-    """Response containing the AI recommendation, created proposal, and policy evaluation result."""
-
     proposal: ProposalOut
     policy: PolicyResult
+    ai: AIProvenance
     message: str
 
 
-@router.post(
-    "/generate",
-    response_model=ProposalGenerationResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Generate a purchase proposal via AI and evaluate against spending mandate",
-)
-async def generate_proposal(
-    request: ShoppingPromptRequest,
-    db: Session = Depends(get_db),
-):
-    """AI Shopping Assistant Workflow:
-
-    1. AI analyzes catalog and user prompt to recommend a product.
-    2. Deterministic policy engine validates proposal against mandate.
-    3. If valid -> proposal created in PENDING state awaiting human approval.
-    4. If violations -> proposal created in REJECTED state with explicit violation details.
-    """
-    # 1. Fetch and validate mandate
-    mandate = db.query(Mandate).filter(Mandate.id == request.mandate_id).first()
-    if not mandate:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Mandate with ID '{request.mandate_id}' was not found.",
-        )
-
-    if not mandate.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Mandate '{mandate.name}' is currently paused/inactive.",
-        )
-
-    # 2. Fetch available catalog
-    products = db.query(Product).all()
-    if not products:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Catalog has no products available.",
-        )
-
-    # 3. AI Agent recommendation
-    try:
-        recommendation = await generate_shopping_recommendation(
-            user_prompt=request.prompt,
-            mandate=mandate,
-            available_products=products,
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"AI Agent failed to analyze shopping request: {str(exc)}",
-        )
-
-    selected_product = recommendation.product
-    quantity = recommendation.quantity
-    unit_price = Decimal(str(selected_product.price))
-    total_amount = unit_price * Decimal(str(quantity))
-
-    # 4. Deterministic Policy Evaluation
-    _, remaining_budget = calculate_mandate_budget(db, mandate)
-
-    # Build transient candidate object for policy evaluation
-    candidate_proposal = Proposal(
-        mandate_id=mandate.id,
-        product_id=selected_product.id,
-        product_name=selected_product.name,
-        merchant=selected_product.merchant,
-        category=selected_product.category,
-        price=unit_price,
-        quantity=quantity,
-        total_amount=total_amount,
-        product=selected_product,
-    )
-
-    policy_result = PolicyEngine.evaluate(
-        mandate=mandate,
-        proposal=candidate_proposal,
-        product=selected_product,
-        remaining_budget=remaining_budget,
-    )
-
-    # 5. Persist Proposal with appropriate status
-    initial_status = ProposalStatus.PENDING if policy_result.passed else ProposalStatus.REJECTED
-    approval_token = secrets.token_urlsafe(32) if policy_result.passed else None
+def _create_and_evaluate(
+    db: Session,
+    mandate: Mandate,
+    product: Product,
+    quantity: int,
+    *,
+    prompt: Optional[str],
+    reasoning: Optional[str],
+    provider: str,
+    model: Optional[str],
+    fallback_reason: Optional[str],
+    supersedes_id: Optional[str] = None,
+    ai_audit: Optional[dict] = None,
+) -> tuple:
+    """Price the item from the catalog, run the policy engine, persist the decision."""
+    settings = get_settings()
+    unit_price = q(product.price)
+    total = q(unit_price * Decimal(quantity))
 
     proposal = Proposal(
         mandate_id=mandate.id,
-        product_id=selected_product.id,
-        product_name=selected_product.name,
-        merchant=selected_product.merchant,
-        category=selected_product.category,
+        product_id=product.id,
+        product_name=product.name,
+        merchant=product.merchant,
+        category=product.category,
         price=unit_price,
         quantity=quantity,
-        total_amount=total_amount,
-        ai_reasoning=recommendation.ai_reasoning,
-        status=initial_status,
-        approval_token=approval_token,
+        total_amount=total,
+        currency=settings.currency,
+        user_prompt=prompt,
+        ai_reasoning=reasoning,
+        ai_provider=provider,
+        ai_model=model,
+        ai_fallback_reason=fallback_reason,
+        supersedes_id=supersedes_id,
     )
-
     db.add(proposal)
+    db.flush()  # assigns id, idempotency key
+
+    _, _, remaining = budget_breakdown(db, mandate, exclude_proposal_id=proposal.id)
+    policy = PolicyEngine.evaluate(
+        mandate=mandate, proposal=proposal, product=product,
+        remaining_budget=remaining, expected_currency=settings.currency,
+    )
+    snapshot = canonical_snapshot(proposal, mandate)
+    proposal.policy_checks = checks_to_json(policy)
+    proposal.remaining_budget_at_decision = remaining
+    proposal.approval_snapshot = snapshot
+    proposal.proposal_fingerprint = fingerprint_of(snapshot)
+    proposal.status = ProposalStatus.AWAITING_HUMAN_APPROVAL if policy.passed else ProposalStatus.POLICY_REJECTED
+    proposal.status_reason = None if policy.passed else "Blocked by policy: " + " ".join(policy.violations)
     db.commit()
     db.refresh(proposal)
 
-    # 6. Record Audit Log
-    event_type = "POLICY_CHECK_PASSED" if policy_result.passed else "POLICY_CHECK_FAILED"
-    log_audit_event(
-        db=db,
-        event_type=event_type,
-        entity_type="Proposal",
-        entity_id=proposal.id,
-        details={
-            "product_name": proposal.product_name,
-            "merchant": proposal.merchant,
-            "category": proposal.category,
-            "total_amount": float(proposal.total_amount),
-            "remaining_budget": float(remaining_budget),
-            "passed": policy_result.passed,
-            "violations": policy_result.violations,
-            "ai_prompt": request.prompt,
+    if ai_audit is not None:
+        log_audit_event(db, "AI_RECOMMENDATION_GENERATED", "Proposal", proposal.id, ai_audit)
+    log_audit_event(db, "POLICY_CHECK_PASSED" if policy.passed else "POLICY_CHECK_FAILED", "Proposal", proposal.id, {
+        "mandate_id": mandate.id,
+        "product_name": proposal.product_name,
+        "merchant": proposal.merchant,
+        "category": proposal.category,
+        "unit_price": f"{proposal.price:.2f}",
+        "quantity": proposal.quantity,
+        "total_amount": f"{proposal.total_amount:.2f}",
+        "currency": proposal.currency,
+        "remaining_budget": f"{remaining:.2f}",
+        "passed": policy.passed,
+        "rules_evaluated": len(policy.checks),
+        "violations": policy.violations,
+        "proposal_fingerprint": proposal.proposal_fingerprint,
+    })
+    return proposal, policy
+
+
+@router.post("/generate", response_model=ProposalGenerationResponse, status_code=status.HTTP_201_CREATED,
+             summary="AI recommends a product; the deterministic policy engine decides")
+async def generate_proposal(request: ShoppingPromptRequest, db: Session = Depends(get_db)):
+    mandate = db.query(Mandate).filter(Mandate.id == request.mandate_id).first()
+    if not mandate:
+        raise _fail(404, "NOT_FOUND", f"Mandate '{request.mandate_id}' was not found.")
+
+    products = db.query(Product).order_by(Product.id).all()
+    if not products:
+        raise _fail(400, "EMPTY_CATALOG", "Catalog has no products available.")
+
+    rec = await generate_shopping_recommendation(request.prompt, mandate, products)
+
+    proposal, policy = _create_and_evaluate(
+        db, mandate, rec.product, rec.quantity,
+        prompt=request.prompt.strip(),
+        reasoning=rec.ai_reasoning,
+        provider=rec.provider,
+        model=rec.model,
+        fallback_reason=rec.fallback_reason,
+        ai_audit={
+            "provider": rec.provider,
+            "model": rec.model,
+            "fallback_reason": rec.fallback_reason,
+            "product_id": rec.product.id,
+            "quantity": rec.quantity,
+            "ignored_ai_fields": rec.ignored_fields,
+            "prompt": request.prompt.strip()[:300],
         },
     )
 
+    engine = f"OpenAI {rec.model}" if rec.provider == "openai" else "heuristic fallback (not AI)"
     message = (
-        "Proposal successfully evaluated and approved by Guardian Policy Engine. Ready for human approval."
-        if policy_result.passed
-        else f"Guardian Policy Engine BLOCKED proposal: {'; '.join(policy_result.violations)}"
+        f"Recommended by {engine}. Policy engine PASSED all {len(policy.checks)} rules — awaiting your explicit approval."
+        if policy.passed
+        else f"Recommended by {engine}. Policy engine BLOCKED this purchase: {' '.join(policy.violations)}"
     )
-
     return ProposalGenerationResponse(
         proposal=ProposalOut.model_validate(proposal),
-        policy=policy_result,
+        policy=policy,
+        ai=AIProvenance(provider=rec.provider, model=rec.model, fallback_reason=rec.fallback_reason,
+                        ignored_fields=rec.ignored_fields),
         message=message,
     )
 
 
-@router.get("", response_model=List[ProposalOut], summary="List all proposals")
+@router.get("", response_model=List[ProposalOut], summary="List proposals (most recent first)")
 def list_proposals(
-    mandate_id: Optional[str] = Query(None, description="Filter by mandate ID"),
-    status_filter: Optional[ProposalStatus] = Query(None, alias="status", description="Filter by status"),
+    mandate_id: Optional[str] = Query(None),
+    status_filter: Optional[ProposalStatus] = Query(None, alias="status"),
+    limit: int = Query(200, ge=1, le=500),
     db: Session = Depends(get_db),
 ):
-    """Retrieve proposals ordered by most recent first."""
     query = db.query(Proposal)
     if mandate_id:
         query = query.filter(Proposal.mandate_id == mandate_id)
     if status_filter:
         query = query.filter(Proposal.status == status_filter)
+    return query.order_by(Proposal.created_at.desc()).limit(limit).all()
 
-    return query.order_by(Proposal.created_at.desc()).all()
 
-
-@router.get("/{proposal_id}", response_model=ProposalOut, summary="Get proposal by ID")
+@router.get("/{proposal_id}", response_model=ProposalOut)
 def get_proposal(proposal_id: str, db: Session = Depends(get_db)):
-    """Retrieve a single proposal by ID."""
     proposal = db.query(Proposal).filter(Proposal.id == proposal_id).first()
     if not proposal:
-        raise HTTPException(status_code=404, detail="Proposal not found.")
+        raise _fail(404, "NOT_FOUND", "Proposal not found.")
     return proposal
 
 
-@router.post(
-    "/{proposal_id}/approve",
-    response_model=ProposalOut,
-    summary="Human explicit approval of a purchase proposal",
-)
-def approve_proposal(
-    proposal_id: str,
-    db: Session = Depends(get_db),
-):
-    """Human approval step with mandatory server-side revalidation.
-
-    Security Rule: The backend must revalidate mandate, budget, merchant, and category
-    before granting human approval!
-    """
+def _load(db: Session, proposal_id: str):
     proposal = db.query(Proposal).filter(Proposal.id == proposal_id).first()
     if not proposal:
-        raise HTTPException(status_code=404, detail="Proposal not found.")
-
-    if proposal.status != ProposalStatus.PENDING:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot approve proposal with status '{proposal.status}'. Must be 'pending'.",
-        )
-
+        raise _fail(404, "NOT_FOUND", "Proposal not found.")
     mandate = db.query(Mandate).filter(Mandate.id == proposal.mandate_id).first()
-    if not mandate or not mandate.is_active:
-        raise HTTPException(status_code=400, detail="Associated mandate is inactive or missing.")
-
+    if not mandate:
+        raise _fail(409, "MANDATE_MISSING", "The mandate for this proposal no longer exists.")
     product = db.query(Product).filter(Product.id == proposal.product_id).first()
+    return proposal, mandate, product
 
-    # Revalidate policy before granting approval
-    _, remaining_budget = calculate_mandate_budget(db, mandate)
-    recheck = PolicyEngine.evaluate(
-        mandate=mandate,
-        proposal=proposal,
-        product=product,
-        remaining_budget=remaining_budget,
-    )
 
-    if not recheck.passed:
-        proposal.status = ProposalStatus.REJECTED
-        db.commit()
-        log_audit_event(
-            db=db,
-            event_type="APPROVAL_REVALIDATION_FAILED",
-            entity_type="Proposal",
-            entity_id=proposal.id,
-            details={"violations": recheck.violations},
-        )
-        raise HTTPException(
-            status_code=400,
-            detail=f"Approval rejected: Policy revalidation failed: {'; '.join(recheck.violations)}",
-        )
+@router.post("/{proposal_id}/approve", response_model=ProposalOut,
+             summary="Explicit human approval, bound to the exact fingerprint the user reviewed")
+def approve_proposal(proposal_id: str, body: ProposalApproval, db: Session = Depends(get_db)):
+    proposal, mandate, product = _load(db, proposal_id)
 
-    # Policy passed - mark as APPROVED
-    proposal.status = ProposalStatus.APPROVED
+    if proposal.status != ProposalStatus.AWAITING_HUMAN_APPROVAL:
+        raise _fail(409, "INVALID_STATE",
+                    f"Only proposals awaiting approval can be approved; status is {proposal.status.value}.")
+
+    if body.expected_fingerprint != proposal.proposal_fingerprint:
+        log_audit_event(db, "APPROVAL_FINGERPRINT_MISMATCH", "Proposal", proposal.id, {
+            "submitted_fingerprint": body.expected_fingerprint,
+            "proposal_fingerprint": proposal.proposal_fingerprint,
+        })
+        raise _fail(409, "FINGERPRINT_MISMATCH",
+                    "The approval does not match the proposal you are approving. Reload and review it again.")
+
+    integrity = verify_authorization(db, proposal, mandate, product, require_approval=False)
+    if not integrity.ok:
+        raise _fail(409, "APPROVAL_INVALIDATED", expire_approval(db, proposal, "human approval", integrity),
+                    proposal_status=ProposalStatus.APPROVAL_EXPIRED.value)
+
+    proposal.status = ProposalStatus.HUMAN_APPROVED
+    proposal.status_reason = None
+    proposal.approval_fingerprint = integrity.current_fingerprint
+    proposal.approval_snapshot = canonical_snapshot(proposal, mandate)
+    proposal.approved_at = utc_now()
     db.commit()
     db.refresh(proposal)
 
-    log_audit_event(
-        db=db,
-        event_type="PROPOSAL_HUMAN_APPROVED",
-        entity_type="Proposal",
-        entity_id=proposal.id,
-        details={
-            "product_name": proposal.product_name,
-            "merchant": proposal.merchant,
-            "total_amount": float(proposal.total_amount),
-        },
-    )
-
+    log_audit_event(db, "PROPOSAL_HUMAN_APPROVED", "Proposal", proposal.id, {
+        "product_name": proposal.product_name,
+        "merchant": proposal.merchant,
+        "quantity": proposal.quantity,
+        "total_amount": f"{proposal.total_amount:.2f}",
+        "currency": proposal.currency,
+        "approval_fingerprint": proposal.approval_fingerprint,
+        "rules_revalidated": len(integrity.policy.checks),
+    })
     return proposal
 
 
-@router.post(
-    "/{proposal_id}/reject",
-    response_model=ProposalOut,
-    summary="Human explicit rejection of a purchase proposal",
-)
-def reject_proposal(
-    proposal_id: str,
-    db: Session = Depends(get_db),
-):
-    """Reject a proposal."""
-    proposal = db.query(Proposal).filter(Proposal.id == proposal_id).first()
-    if not proposal:
-        raise HTTPException(status_code=404, detail="Proposal not found.")
-
-    if proposal.status in (ProposalStatus.CAPTURED, ProposalStatus.REJECTED):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Cannot reject proposal in '{proposal.status}' status.",
-        )
-
-    proposal.status = ProposalStatus.REJECTED
+@router.post("/{proposal_id}/reject", response_model=ProposalOut, summary="Explicit human rejection")
+def reject_proposal(proposal_id: str, db: Session = Depends(get_db)):
+    proposal, _, _ = _load(db, proposal_id)
+    if proposal.status not in REJECTABLE_STATUSES:
+        raise _fail(409, "INVALID_STATE", f"Cannot reject a proposal in status {proposal.status.value}.")
+    previous = proposal.status.value
+    proposal.status = ProposalStatus.HUMAN_REJECTED
+    proposal.status_reason = "Rejected by the user."
     db.commit()
     db.refresh(proposal)
+    log_audit_event(db, "PROPOSAL_HUMAN_REJECTED", "Proposal", proposal.id,
+                    {"previous_status": previous, "total_amount": f"{proposal.total_amount:.2f}"})
+    return proposal
 
-    log_audit_event(
-        db=db,
-        event_type="PROPOSAL_HUMAN_REJECTED",
-        entity_type="Proposal",
-        entity_id=proposal.id,
-        details={"total_amount": float(proposal.total_amount)},
+
+@router.post("/{proposal_id}/re-evaluate", response_model=ProposalGenerationResponse, status_code=201,
+             summary="Create a fresh proposal from current catalog + mandate after an approval was invalidated")
+def re_evaluate_proposal(proposal_id: str, db: Session = Depends(get_db)):
+    old, mandate, product = _load(db, proposal_id)
+    if old.status not in (ProposalStatus.APPROVAL_EXPIRED, ProposalStatus.PAYPAL_CANCELLED):
+        raise _fail(409, "INVALID_STATE", f"Re-evaluation is only for expired or cancelled proposals; status is {old.status.value}.")
+    if product is None:
+        raise _fail(409, "PRODUCT_MISSING", "The product no longer exists in the catalog.")
+
+    proposal, policy = _create_and_evaluate(
+        db, mandate, product, old.quantity,
+        prompt=old.user_prompt, reasoning=old.ai_reasoning,
+        provider="re-evaluation", model=None,
+        fallback_reason=None, supersedes_id=old.id,
+    )
+    if old.status == ProposalStatus.PAYPAL_CANCELLED:
+        old.status = ProposalStatus.APPROVAL_EXPIRED
+    old.status_reason = (old.status_reason or "") + f" Superseded by proposal {proposal.id}."
+    db.commit()
+    log_audit_event(db, "PROPOSAL_RE_EVALUATED", "Proposal", old.id, {"new_proposal_id": proposal.id, "passed": policy.passed})
+
+    return ProposalGenerationResponse(
+        proposal=ProposalOut.model_validate(proposal),
+        policy=policy,
+        ai=AIProvenance(provider="re-evaluation", model=None, fallback_reason=None),
+        message=("Re-evaluated against the current mandate and catalog: PASSED. Awaiting your explicit approval."
+                 if policy.passed else "Re-evaluated: BLOCKED. " + " ".join(policy.violations)),
     )
 
-    return proposal
+
+@router.get("/{proposal_id}/receipt", response_model=AuthorizationReceipt,
+            summary="Authorization Receipt: why this purchase was permitted or blocked")
+def get_receipt(proposal_id: str, db: Session = Depends(get_db)):
+    proposal, mandate, product = _load(db, proposal_id)
+
+    snapshot = canonical_snapshot(proposal, mandate)
+    current = fingerprint_of(snapshot)
+    bound = proposal.approval_fingerprint or proposal.proposal_fingerprint
+    changes: List[str] = []
+    terminal = proposal.status in (ProposalStatus.CAPTURED, ProposalStatus.POLICY_REJECTED,
+                                   ProposalStatus.HUMAN_REJECTED, ProposalStatus.APPROVAL_EXPIRED,
+                                   ProposalStatus.PAYMENT_FAILED)
+    if bound and current != bound:
+        changes = describe_changes(proposal.approval_snapshot, snapshot)
+    if not terminal:
+        changes += catalog_drift(proposal, product)
+
+    timeline = (
+        db.query(AuditLog)
+        .filter(AuditLog.entity_type == "Proposal", AuditLog.entity_id == proposal.id)
+        .order_by(AuditLog.timestamp.asc(), AuditLog.id.asc())
+        .all()
+    )
+    decision_checks = [PolicyCheck(**c) for c in (proposal.policy_checks or [])]
+    reval = [PolicyCheck(**c) for c in proposal.revalidation_checks] if proposal.revalidation_checks else None
+
+    return AuthorizationReceipt(
+        proposal=ProposalOut.model_validate(proposal),
+        mandate=ReceiptMandate(
+            id=mandate.id, name=mandate.name, is_active=mandate.is_active,
+            max_budget=q(mandate.max_budget), currency=mandate.currency or "USD",
+            allowed_merchants=mandate.allowed_merchants or [],
+            allowed_categories=mandate.allowed_categories or [],
+            restrictions=mandate.restrictions or {},
+        ),
+        decision="BLOCKED" if proposal.status == ProposalStatus.POLICY_REJECTED else "AUTHORIZED",
+        decision_checks=decision_checks,
+        revalidation_checks=reval,
+        revalidated_at=proposal.revalidated_at,
+        integrity=ReceiptIntegrity(
+            proposal_fingerprint=proposal.proposal_fingerprint,
+            approval_fingerprint=proposal.approval_fingerprint,
+            current_fingerprint=current,
+            intact=not changes,
+            changes=changes,
+        ),
+        timeline=[AuditLogOut.model_validate(t) for t in timeline],
+    )
+
+
+__all__ = ["router", "fmt"]

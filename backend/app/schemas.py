@@ -3,7 +3,9 @@
 from datetime import datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from app.models import ProposalStatus
 
 
@@ -16,7 +18,7 @@ class ProductBase(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=255, description="Product display name")
     description: str = Field(default="", description="Detailed product description")
-    price: Decimal = Field(..., gt=0, decimal_places=2, description="Product unit price in USD")
+    price: Decimal = Field(..., gt=0, decimal_places=2, description="Product unit price in the configured currency")
     category: str = Field(..., min_length=1, max_length=100, description="Product category")
     merchant: str = Field(..., min_length=1, max_length=100, description="Merchant or vendor name")
     image_url: Optional[str] = Field(default=None, max_length=500, description="Optional image URL")
@@ -24,15 +26,11 @@ class ProductBase(BaseModel):
 
 
 class ProductCreate(ProductBase):
-    """Schema for creating a new product."""
     pass
 
 
 class ProductOut(ProductBase):
-    """Schema for returning product data to clients."""
-
     id: int = Field(..., description="Unique product identifier")
-
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -40,16 +38,71 @@ class ProductOut(ProductBase):
 # Mandate Schemas
 # ============================================================================
 
+def _clean_str_list(value: Optional[List[str]]) -> List[str]:
+    seen: Dict[str, str] = {}
+    for item in value or []:
+        s = str(item).strip()
+        if s and s.lower() not in seen:
+            seen[s.lower()] = s
+    return list(seen.values())
+
+
+class MandateRestrictions(BaseModel):
+    """Typed fine-grained restrictions. Stored as JSON on the mandate."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    max_price_per_item: Optional[Decimal] = Field(default=None, gt=0, decimal_places=2)
+    min_price_per_item: Optional[Decimal] = Field(default=None, ge=0, decimal_places=2)
+    max_quantity: Optional[int] = Field(default=None, ge=1, le=20)
+    prohibited_keywords: List[str] = Field(default_factory=list)
+    prohibited_merchants: List[str] = Field(default_factory=list)
+
+    @field_validator("prohibited_keywords", "prohibited_merchants")
+    @classmethod
+    def _clean(cls, v: List[str]) -> List[str]:
+        return _clean_str_list(v)
+
+    def to_json(self) -> Dict[str, Any]:
+        out: Dict[str, Any] = {}
+        for key in ("max_price_per_item", "min_price_per_item"):
+            val = getattr(self, key)
+            if val is not None:
+                out[key] = float(val)
+        if self.max_quantity is not None:
+            out["max_quantity"] = self.max_quantity
+        if self.prohibited_keywords:
+            out["prohibited_keywords"] = self.prohibited_keywords
+        if self.prohibited_merchants:
+            out["prohibited_merchants"] = self.prohibited_merchants
+        return out
+
+
+def _normalize_restrictions(value: Any) -> Dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError("restrictions must be an object")
+    data = dict(value)
+    # Accept legacy aliases.
+    if "max_item_price" in data and "max_price_per_item" not in data:
+        data["max_price_per_item"] = data.pop("max_item_price")
+    if "min_item_price" in data and "min_price_per_item" not in data:
+        data["min_price_per_item"] = data.pop("min_item_price")
+    data = {k: v for k, v in data.items() if v is not None and v != ""}
+    return MandateRestrictions(**data).to_json()
+
+
 class MandateBase(BaseModel):
     """Base spending mandate constraints defined by the user."""
 
-    name: str = Field(..., min_length=1, max_length=255, description="Name or nickname of this mandate")
-    max_budget: Decimal = Field(..., gt=0, decimal_places=2, description="Upper bound budget allocation in USD")
-    allowed_merchants: List[str] = Field(default_factory=list, description="List of authorized merchant names")
-    allowed_categories: List[str] = Field(default_factory=list, description="List of authorized product categories")
+    name: str = Field(..., min_length=1, max_length=255, description="Name of this mandate")
+    max_budget: Decimal = Field(..., gt=0, le=Decimal("100000"), decimal_places=2, description="Total budget")
+    allowed_merchants: List[str] = Field(default_factory=list, description="Authorized merchant names")
+    allowed_categories: List[str] = Field(default_factory=list, description="Authorized product categories")
     restrictions: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Fine-grained restrictions (e.g. max_price_per_item, prohibited_keywords)",
+        description="max_price_per_item, min_price_per_item, max_quantity, prohibited_keywords, prohibited_merchants",
     )
 
 
@@ -59,80 +112,135 @@ class MandateCreate(MandateBase):
     @field_validator("allowed_merchants", "allowed_categories")
     @classmethod
     def validate_non_empty_lists(cls, value: List[str]) -> List[str]:
-        """Strip whitespace and filter empty entries."""
-        cleaned = [item.strip() for item in value if item.strip()]
+        cleaned = _clean_str_list(value)
         if not cleaned:
             raise ValueError("Must contain at least one valid entry.")
         return cleaned
+
+    @field_validator("restrictions", mode="before")
+    @classmethod
+    def validate_restrictions(cls, value: Any) -> Dict[str, Any]:
+        return _normalize_restrictions(value)
 
 
 class MandateUpdate(BaseModel):
     """Schema for updating an existing spending mandate."""
 
     name: Optional[str] = Field(default=None, min_length=1, max_length=255)
-    max_budget: Optional[Decimal] = Field(default=None, gt=0, decimal_places=2)
+    max_budget: Optional[Decimal] = Field(default=None, gt=0, le=Decimal("100000"), decimal_places=2)
     allowed_merchants: Optional[List[str]] = None
     allowed_categories: Optional[List[str]] = None
     restrictions: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
 
+    @field_validator("allowed_merchants", "allowed_categories")
+    @classmethod
+    def validate_lists(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if value is None:
+            return None
+        cleaned = _clean_str_list(value)
+        if not cleaned:
+            raise ValueError("Must contain at least one valid entry.")
+        return cleaned
+
+    @field_validator("restrictions", mode="before")
+    @classmethod
+    def validate_restrictions(cls, value: Any) -> Optional[Dict[str, Any]]:
+        if value is None:
+            return None
+        return _normalize_restrictions(value)
+
 
 class MandateOut(MandateBase):
-    """Schema for returning mandate details including live calculated budgets."""
+    """Mandate details including live budget accounting."""
 
-    id: str = Field(..., description="Unique UUID identifier for the mandate")
-    is_active: bool = Field(..., description="Whether the mandate is currently active")
-    created_at: datetime = Field(..., description="Timestamp of mandate creation")
-    updated_at: datetime = Field(..., description="Timestamp of last mandate update")
-    spent_budget: Decimal = Field(default=Decimal("0.00"), decimal_places=2, description="Total funds spent or locked")
-    remaining_budget: Decimal = Field(default=Decimal("0.00"), decimal_places=2, description="Live available spending capacity")
+    id: str
+    currency: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    spent_budget: Decimal = Field(default=Decimal("0.00"), description="Verified captured spend")
+    committed_budget: Decimal = Field(default=Decimal("0.00"), description="Approved, not yet captured")
+    remaining_budget: Decimal = Field(default=Decimal("0.00"), description="max_budget - spent - committed")
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ============================================================================
+# Policy Engine Result Schemas
+# ============================================================================
+
+class PolicyCheck(BaseModel):
+    """Outcome of one deterministic rule."""
+
+    rule: str
+    label: str
+    passed: bool
+    detail: str
+
+
+class PolicyResult(BaseModel):
+    """Deterministic evaluation result against mandate rules."""
+
+    passed: bool
+    violations: List[str] = Field(default_factory=list)
+    checks: List[PolicyCheck] = Field(default_factory=list)
+    remaining_budget: Optional[Decimal] = None
+    currency: Optional[str] = None
+    details: Optional[Dict[str, Any]] = None
 
 
 # ============================================================================
 # Proposal Schemas
 # ============================================================================
 
-class ProposalCreate(BaseModel):
-    """Request payload to submit a proposed transaction for mandate evaluation."""
-
-    mandate_id: str = Field(..., description="Target spending mandate UUID")
-    product_id: int = Field(..., description="Catalog product ID")
-    quantity: int = Field(default=1, ge=1, description="Quantity to purchase")
-    ai_reasoning: Optional[str] = Field(default=None, description="Explanation generated by the agent justifying the purchase")
-    idempotency_key: Optional[str] = Field(default=None, description="Unique client key preventing duplicate proposal creation")
-
-
 class ProposalApproval(BaseModel):
-    """Explicit human approval payload containing cryptographic approval token."""
+    """Explicit human approval, bound to the fingerprint the user reviewed."""
 
-    approval_token: str = Field(..., min_length=1, description="Single-use approval token issued upon policy pass")
-    approved: bool = Field(..., description="Whether the user explicitly approved or rejected the proposal")
-    reason: Optional[str] = Field(default=None, description="Optional explanation or comment from the user")
+    expected_fingerprint: str = Field(
+        ..., min_length=64, max_length=64,
+        description="The proposal fingerprint displayed to the user when they clicked approve",
+    )
 
 
 class ProposalOut(BaseModel):
-    """Schema returning proposal status and audit parameters."""
+    """Proposal state. Never contains secrets."""
 
-    id: str = Field(..., description="Proposal UUID")
-    mandate_id: str = Field(..., description="Associated mandate ID")
-    product_id: int = Field(..., description="Associated product ID")
-    product_name: str = Field(..., description="Product name snapshot")
-    merchant: str = Field(..., description="Merchant name snapshot")
-    category: str = Field(..., description="Category snapshot")
-    price: Decimal = Field(..., decimal_places=2, description="Unit price snapshot")
-    quantity: int = Field(..., description="Quantity requested")
-    total_amount: Decimal = Field(..., decimal_places=2, description="Total amount snapshot (price * quantity)")
-    ai_reasoning: Optional[str] = Field(default=None, description="AI reasoning justification")
-    status: ProposalStatus = Field(..., description="Current proposal lifecycle status")
-    approval_token: Optional[str] = Field(default=None, description="Token required for user confirmation")
-    idempotency_key: str = Field(..., description="Idempotency key preventing double capture")
-    paypal_order_id: Optional[str] = Field(default=None, description="PayPal Orders API v2 order ID")
-    paypal_capture_id: Optional[str] = Field(default=None, description="PayPal capture ID")
-    paypal_approval_url: Optional[str] = Field(default=None, description="PayPal checkout approval URL")
-    created_at: datetime = Field(..., description="Created timestamp")
-    updated_at: datetime = Field(..., description="Updated timestamp")
+    id: str
+    mandate_id: str
+    product_id: int
+    product_name: str
+    merchant: str
+    category: str
+    price: Decimal
+    quantity: int
+    total_amount: Decimal
+    currency: str
+    status: ProposalStatus
+    status_reason: Optional[str] = None
+    user_prompt: Optional[str] = None
+    ai_reasoning: Optional[str] = None
+    ai_provider: Optional[str] = None
+    ai_model: Optional[str] = None
+    ai_fallback_reason: Optional[str] = None
+    supersedes_id: Optional[str] = None
+    policy_checks: Optional[List[Dict[str, Any]]] = None
+    remaining_budget_at_decision: Optional[Decimal] = None
+    proposal_fingerprint: Optional[str] = None
+    approval_fingerprint: Optional[str] = None
+    approved_at: Optional[datetime] = None
+    idempotency_key: str
+    paypal_order_id: Optional[str] = None
+    paypal_order_status: Optional[str] = None
+    paypal_approval_url: Optional[str] = None
+    paypal_capture_id: Optional[str] = None
+    paypal_capture_status: Optional[str] = None
+    captured_amount: Optional[Decimal] = None
+    captured_currency: Optional[str] = None
+    captured_at: Optional[datetime] = None
+    paypal_debug_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -142,31 +250,47 @@ class ProposalOut(BaseModel):
 # ============================================================================
 
 class AuditLogOut(BaseModel):
-    """Immutable audit log event representation."""
-
-    id: int = Field(..., description="Audit log sequence ID")
-    event_type: str = Field(..., description="Event type identifier")
-    entity_type: str = Field(..., description="Associated entity type (e.g. Mandate, Proposal)")
-    entity_id: str = Field(..., description="Identifier of the target entity")
-    details: Dict[str, Any] = Field(default_factory=dict, description="Sanitized event context")
-    timestamp: datetime = Field(..., description="Event timestamp in UTC")
+    id: int
+    event_type: str
+    entity_type: str
+    entity_id: str
+    details: Dict[str, Any] = Field(default_factory=dict)
+    timestamp: datetime
 
     model_config = ConfigDict(from_attributes=True)
 
 
 # ============================================================================
-# Policy Engine Result Schemas
+# Authorization Receipt
 # ============================================================================
 
-class PolicyResult(BaseModel):
-    """Deterministic evaluation result against mandate rules."""
+class ReceiptMandate(BaseModel):
+    id: str
+    name: str
+    is_active: bool
+    max_budget: Decimal
+    currency: str
+    allowed_merchants: List[str]
+    allowed_categories: List[str]
+    restrictions: Dict[str, Any]
 
-    passed: bool = Field(..., description="True if all policy rules were satisfied without violation")
-    violations: List[str] = Field(
-        default_factory=list,
-        description="List of human-readable rule violation descriptions",
-    )
-    details: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Optional structured metadata regarding rule evaluations",
-    )
+
+class ReceiptIntegrity(BaseModel):
+    proposal_fingerprint: Optional[str]
+    approval_fingerprint: Optional[str]
+    current_fingerprint: str
+    intact: bool
+    changes: List[str] = Field(default_factory=list)
+
+
+class AuthorizationReceipt(BaseModel):
+    """Server-assembled explanation of why a purchase was permitted or blocked."""
+
+    proposal: ProposalOut
+    mandate: ReceiptMandate
+    decision: str  # "BLOCKED" | "AUTHORIZED"
+    decision_checks: List[PolicyCheck]
+    revalidation_checks: Optional[List[PolicyCheck]] = None
+    revalidated_at: Optional[datetime] = None
+    integrity: ReceiptIntegrity
+    timeline: List[AuditLogOut]
