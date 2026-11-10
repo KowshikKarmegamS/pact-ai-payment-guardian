@@ -1,219 +1,135 @@
 import React, { useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import {
-  Shield,
-  LayoutDashboard,
-  ScrollText,
-  Bot,
-  CreditCard,
-  History,
-  Menu,
-  X,
-  CheckCircle2,
-  Bell,
-  ExternalLink,
-} from 'lucide-react';
+import { NavLink, Outlet } from 'react-router-dom';
+import { Bot, CreditCard, ExternalLink, History, LayoutDashboard, Menu, ScrollText, Shield, X } from 'lucide-react';
+import { pactApi } from '../api/pact';
+import { useAsync } from '../lib/useAsync';
+import type { SystemStatus } from '../types';
 
-interface NavItem {
-  to: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  badge?: string;
-}
-
-const navItems: NavItem[] = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+const NAV = [
+  { to: '/', label: 'Overview', icon: LayoutDashboard },
+  { to: '/assistant', label: 'Shopping Assistant', icon: Bot },
   { to: '/mandates', label: 'Mandates', icon: ScrollText },
-  { to: '/assistant', label: 'Shopping Assistant', icon: Bot, badge: 'AI' },
   { to: '/transactions', label: 'Transactions', icon: CreditCard },
   { to: '/audit', label: 'Audit Trail', icon: History },
 ];
 
-export const Layout: React.FC = () => {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const location = useLocation();
+const Dot: React.FC<{ ok: boolean | null }> = ({ ok }) => (
+  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${ok === null ? 'bg-slate-500' : ok ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+);
 
-  const getPageTitle = (path: string): string => {
-    switch (path) {
-      case '/':
-        return 'Overview & Guardian Health';
-      case '/mandates':
-        return 'Spending Mandates';
-      case '/assistant':
-        return 'AI Autonomous Shopping Assistant';
-      case '/transactions':
-        return 'Transaction Ledger & Proposals';
-      case '/audit':
-        return 'Cryptographic Audit Trail';
-      default:
-        return 'Dashboard';
-    }
-  };
+const SystemPanel: React.FC<{ status: SystemStatus | null; error: string | null }> = ({ status, error }) => {
+  if (error) {
+    return (
+      <div className="rounded-lg border border-red-900/60 bg-red-950/40 p-3 text-[11px] text-red-200">
+        Backend unreachable. Start the API server.
+      </div>
+    );
+  }
+  const pp = status?.paypal;
+  const oauthOk = pp?.oauth.checked ? !!pp.oauth.ok : null;
+  return (
+    <div className="space-y-2 rounded-lg border border-slate-800 bg-slate-900/80 p-3 text-[11px]">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold text-slate-300">PayPal</span>
+        <span className="flex items-center gap-1.5 text-slate-400">
+          <Dot ok={oauthOk} />
+          {!pp ? '…' : pp.environment !== 'sandbox' ? 'Invalid config' : oauthOk === null ? 'Sandbox' : oauthOk ? 'Sandbox connected' : 'Sandbox auth failed'}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold text-slate-300">Recommender</span>
+        <span className="flex items-center gap-1.5 text-slate-400">
+          <Dot ok={status ? status.ai.mode === 'openai' : null} />
+          {!status ? '…' : status.ai.mode === 'openai' ? `OpenAI ${status.ai.model}` : 'Heuristic (no AI key)'}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold text-slate-300">Policy engine</span>
+        <span className="flex items-center gap-1.5 text-slate-400">
+          <Dot ok={status ? true : null} />
+          Deterministic
+        </span>
+      </div>
+      {pp && <p className="text-slate-500">Currency {pp.currency}</p>}
+    </div>
+  );
+};
+
+export const Layout: React.FC = () => {
+  const [open, setOpen] = useState(false);
+  const status = useAsync(() => pactApi.getStatus(true));
+
+  const sidebar = (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-3 px-5 py-5">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-slate-950">
+          <Shield className="h-5 w-5" strokeWidth={2.5} />
+        </div>
+        <div>
+          <p className="text-base font-bold tracking-tight text-white">PACT</p>
+          <p className="text-[11px] text-slate-400">AI Payment Guardian</p>
+        </div>
+      </div>
+      <nav className="flex-1 space-y-0.5 px-3 py-2" aria-label="Main">
+        {NAV.map((item) => (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === '/'}
+            onClick={() => setOpen(false)}
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                isActive ? 'bg-white/10 text-white' : 'text-slate-400 hover:bg-white/5 hover:text-slate-100'
+              }`
+            }
+          >
+            <item.icon className="h-4 w-4 shrink-0" />
+            {item.label}
+          </NavLink>
+        ))}
+      </nav>
+      <div className="space-y-3 p-4">
+        <SystemPanel status={status.data} error={status.error} />
+        <a
+          href="https://github.com/KowshikKarmegamS/pact-ai-payment-guardian"
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1 px-1 text-[11px] text-slate-500 hover:text-slate-300"
+        >
+          Source on GitHub <ExternalLink className="h-3 w-3" />
+        </a>
+      </div>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans">
-      {/* Mobile Top Bar */}
-      <div className="md:hidden flex items-center justify-between bg-slate-950 px-4 py-3 text-white border-b border-slate-800">
-        <div className="flex items-center space-x-2.5">
-          <div className="p-1.5 bg-indigo-600 rounded-lg shadow-sm shadow-indigo-500/50">
-            <Shield className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <span className="font-extrabold tracking-wider text-base text-white">PACT</span>
-            <span className="text-xs text-indigo-300 block -mt-1 font-medium">Payment Guardian</span>
-          </div>
+    <div className="min-h-screen bg-slate-50 md:flex">
+      {/* Mobile top bar */}
+      <div className="sticky top-0 z-30 flex items-center justify-between bg-slate-950 px-4 py-3 md:hidden">
+        <div className="flex items-center gap-2 text-white">
+          <Shield className="h-5 w-5" />
+          <span className="font-bold">PACT</span>
         </div>
-        <button
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          className="p-2 rounded-lg bg-slate-900 text-slate-300 hover:text-white hover:bg-slate-800 focus:outline-none"
-          aria-label="Toggle menu"
-        >
-          {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        <button onClick={() => setOpen((v) => !v)} className="rounded-md p-1.5 text-slate-300 hover:bg-white/10" aria-label="Toggle navigation">
+          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </button>
       </div>
 
-      {/* Sidebar for Desktop & Mobile Overlay */}
+      {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-950 text-slate-200 flex flex-col justify-between border-r border-slate-800/80 transition-transform duration-200 ease-in-out md:translate-x-0 md:static ${
-          mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-950 transition-transform md:sticky md:top-0 md:h-screen md:translate-x-0 ${
+          open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
-        <div className="flex flex-col h-full">
-          {/* Logo / Brand Header */}
-          <div className="p-6 border-b border-slate-900">
-            <div className="flex items-center space-x-3">
-              <div className="p-2.5 bg-gradient-to-tr from-indigo-600 to-indigo-500 rounded-xl shadow-md shadow-indigo-600/30 flex items-center justify-center">
-                <Shield className="w-6 h-6 text-white stroke-[2.5]" />
-              </div>
-              <div>
-                <h1 className="text-xl font-black tracking-tight text-white flex items-center gap-1.5">
-                  PACT
-                  <span className="text-[10px] font-semibold uppercase tracking-widest px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                    AI Guardian
-                  </span>
-                </h1>
-                <p className="text-xs text-slate-400 font-medium">Safe Agentic Commerce</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Navigation Links */}
-          <nav className="flex-1 px-3 py-6 space-y-1.5 overflow-y-auto">
-            <div className="px-3 pb-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-              Navigation
-            </div>
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  onClick={() => setMobileMenuOpen(false)}
-                  end={item.to === '/'}
-                  className={({ isActive }) =>
-                    `flex items-center justify-between px-3.5 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                      isActive
-                        ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30 font-semibold'
-                        : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900'
-                    }`
-                  }
-                >
-                  <div className="flex items-center space-x-3">
-                    <Icon className="w-4 h-4 shrink-0" />
-                    <span>{item.label}</span>
-                  </div>
-                  {item.badge && (
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-400/20 text-indigo-300 border border-indigo-400/30">
-                      {item.badge}
-                    </span>
-                  )}
-                </NavLink>
-              );
-            })}
-          </nav>
-
-          {/* Sandbox & Guard Status Footer */}
-          <div className="p-4 border-t border-slate-900 space-y-3 bg-slate-950/60">
-            <div className="p-3 rounded-lg bg-slate-900/90 border border-slate-800">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-300">PayPal Sandbox</span>
-                <span className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  Active
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-                Zero-trust policy enforcement before payment capture.
-              </p>
-            </div>
-
-            <div className="flex items-center justify-between px-1 text-xs text-slate-400">
-              <span className="font-mono text-[10px] text-slate-400">v0.1.0-alpha</span>
-              <a
-                href="https://github.com/KowshikKarmegamS/pact-ai-payment-guardian"
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 hover:text-slate-300 transition-colors"
-              >
-                GitHub <ExternalLink className="w-3 h-3" />
-              </a>
-            </div>
-          </div>
-        </div>
+        {sidebar}
       </aside>
+      {open && <div className="fixed inset-0 z-30 bg-slate-950/50 md:hidden" onClick={() => setOpen(false)} />}
 
-      {/* Backdrop for mobile */}
-      {mobileMenuOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-slate-950/60 backdrop-blur-xs md:hidden"
-          onClick={() => setMobileMenuOpen(false)}
-        />
-      )}
-
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        {/* Top Header */}
-        <header className="sticky top-0 z-20 bg-white/95 backdrop-blur-sm border-b border-slate-200 px-6 py-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900 tracking-tight">
-              {getPageTitle(location.pathname)}
-            </h2>
-            <p className="text-xs text-slate-500">
-              PACT AI Payment Guardian &bull; PayPal Hackathon 2026
-            </p>
-          </div>
-
-          <div className="flex items-center space-x-3">
-            {/* Policy Guardian Status Pill */}
-            <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Policy Engine: Active</span>
-            </div>
-
-            {/* Notification Bell */}
-            <button
-              className="p-2 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors relative"
-              aria-label="Notifications"
-            >
-              <Bell className="w-4 h-4" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-indigo-600 ring-2 ring-white"></span>
-            </button>
-
-            {/* User Profile avatar */}
-            <div className="flex items-center space-x-2.5 pl-2 border-l border-slate-200">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-700 to-indigo-500 text-white flex items-center justify-center font-bold text-xs shadow-xs">
-                EA
-              </div>
-              <div className="hidden lg:block text-left">
-                <div className="text-xs font-semibold text-slate-800 leading-tight">Engineering Admin</div>
-                <div className="text-[10px] text-slate-500 leading-tight">Admin Mandate Issuer</div>
-              </div>
-            </div>
-          </div>
-        </header>
-
-        {/* Page Content */}
-        <main className="flex-1 p-6 lg:p-8 max-w-7xl w-full mx-auto">
+      <div className="min-w-0 flex-1">
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-center text-[11px] font-medium text-amber-900">
+          PayPal Sandbox demo — no real money moves. Test accounts only.
+        </div>
+        <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           <Outlet />
         </main>
       </div>

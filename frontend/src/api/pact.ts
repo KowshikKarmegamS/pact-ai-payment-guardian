@@ -1,84 +1,49 @@
 import api from './client';
-import { Mandate, Proposal, AuditLogEntry, PolicyResult, Product } from '../types';
+import type {
+  AuditLogEntry,
+  AuthorizationReceipt,
+  Mandate,
+  MandateInput,
+  PaymentStateResponse,
+  PayPalOrderResponse,
+  Product,
+  Proposal,
+  ProposalGenerationResponse,
+  SystemStatus,
+} from '../types';
 
-export interface ProposalGenerationResponse {
-  proposal: Proposal;
-  policy: PolicyResult;
-  message: string;
-}
-
-export interface PayPalOrderResponse {
-  order_id: string;
-  approve_url: string;
-  proposal: Proposal;
-}
-
-export interface PayPalCaptureResponse {
-  proposal: Proposal;
-  capture_id: string;
-  status: string;
-  message: string;
-}
+export type { ProposalGenerationResponse, PayPalOrderResponse, PaymentStateResponse };
 
 export const pactApi = {
+  getStatus: (checkPayPal = false) => api.get<SystemStatus>(`/status${checkPayPal ? '?check_paypal=true' : ''}`),
+
   // Mandates
-  getMandates: async (): Promise<Mandate[]> => {
-    return api.get<Mandate[]>('/mandates');
-  },
+  getMandates: () => api.get<Mandate[]>('/mandates'),
+  getMandate: (id: string) => api.get<Mandate>(`/mandates/${id}`),
+  createMandate: (mandate: MandateInput) => api.post<Mandate>('/mandates', mandate),
+  updateMandate: (id: string, updates: MandateInput) => api.put<Mandate>(`/mandates/${id}`, updates),
 
-  getMandate: async (id: string): Promise<Mandate> => {
-    return api.get<Mandate>(`/mandates/${id}`);
-  },
+  // Catalog
+  getProducts: () => api.get<Product[]>('/products'),
 
-  createMandate: async (mandate: Partial<Mandate>): Promise<Mandate> => {
-    return api.post<Mandate>('/mandates', mandate);
-  },
+  // Proposals
+  generateProposal: (prompt: string, mandate_id: string) =>
+    api.post<ProposalGenerationResponse>('/proposals/generate', { prompt, mandate_id }),
+  getProposals: () => api.get<Proposal[]>('/proposals'),
+  getProposal: (id: string) => api.get<Proposal>(`/proposals/${id}`),
+  getReceipt: (id: string) => api.get<AuthorizationReceipt>(`/proposals/${id}/receipt`),
+  approveProposal: (id: string, expectedFingerprint: string) =>
+    api.post<Proposal>(`/proposals/${id}/approve`, { expected_fingerprint: expectedFingerprint }),
+  rejectProposal: (id: string) => api.post<Proposal>(`/proposals/${id}/reject`),
+  reEvaluateProposal: (id: string) => api.post<ProposalGenerationResponse>(`/proposals/${id}/re-evaluate`),
 
-  updateMandate: async (id: string, updates: Partial<Mandate>): Promise<Mandate> => {
-    return api.put<Mandate>(`/mandates/${id}`, updates);
-  },
+  // PayPal
+  createPayPalOrder: (proposalId: string) => api.post<PayPalOrderResponse>(`/payments/${proposalId}/create-order`),
+  verifyPayPalOrder: (proposalId: string, orderToken?: string) =>
+    api.post<PaymentStateResponse>(`/payments/${proposalId}/verify`, orderToken ? { order_token: orderToken } : {}),
+  cancelPayPalCheckout: (proposalId: string) => api.post<PaymentStateResponse>(`/payments/${proposalId}/cancel`),
+  capturePayPalPayment: (proposalId: string) => api.post<PaymentStateResponse>(`/payments/${proposalId}/capture`),
 
-  // Products
-  getProducts: async (): Promise<Product[]> => {
-    return api.get<Product[]>('/products');
-  },
-
-  // Proposals & AI Agent
-  generateProposal: async (prompt: string, mandate_id: string): Promise<ProposalGenerationResponse> => {
-    return api.post<ProposalGenerationResponse>('/proposals/generate', { prompt, mandate_id });
-  },
-
-  getProposals: async (): Promise<Proposal[]> => {
-    return api.get<Proposal[]>('/proposals');
-  },
-
-  getProposal: async (id: string): Promise<Proposal> => {
-    return api.get<Proposal>(`/proposals/${id}`);
-  },
-
-  approveProposal: async (id: string): Promise<Proposal> => {
-    return api.post<Proposal>(`/proposals/${id}/approve`);
-  },
-
-  rejectProposal: async (id: string): Promise<Proposal> => {
-    return api.post<Proposal>(`/proposals/${id}/reject`);
-  },
-
-  // Payments (PayPal)
-  createPayPalOrder: async (proposal_id: string): Promise<PayPalOrderResponse> => {
-    return api.post<PayPalOrderResponse>(`/payments/${proposal_id}/create-order`);
-  },
-
-  capturePayPalPayment: async (proposal_id: string): Promise<PayPalCaptureResponse> => {
-    return api.post<PayPalCaptureResponse>(`/payments/${proposal_id}/capture`);
-  },
-
-  getPayPalOrderStatus: async (proposal_id: string): Promise<any> => {
-    return api.get(`/payments/${proposal_id}/status`);
-  },
-
-  // Audit Logs
-  getAuditLogs: async (limit: number = 50): Promise<AuditLogEntry[]> => {
-    return api.get<AuditLogEntry[]>(`/audit?limit=${limit}`);
-  },
+  // Audit
+  getAuditLogs: (limit = 200) => api.get<AuditLogEntry[]>(`/audit?limit=${limit}`),
 };

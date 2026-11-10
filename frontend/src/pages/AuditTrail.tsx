@@ -1,188 +1,166 @@
-import React, { useState } from 'react';
-import {
-  Shield,
-  FileCheck2,
-  AlertTriangle,
-  CreditCard,
-  SlidersHorizontal,
-  Calendar,
-  Lock,
-  Search,
-} from 'lucide-react';
-import { AuditLogEntry } from '../types';
-import { mockAuditLogs } from '../data/mockData';
+import React, { useMemo, useState } from 'react';
+import { ChevronRight, Search } from 'lucide-react';
+import { pactApi } from '../api/pact';
+import type { AuditLogEntry } from '../types';
+import { dateTime, eventMeta, shortId } from '../lib/format';
+import { useAsync } from '../lib/useAsync';
+import { ProposalCase } from '../components/ProposalCase';
+import { Badge, Card, EmptyState, ErrorState, Modal, Mono, PageHeader, RefreshButton, Spinner } from '../components/ui';
+
+type Category = 'all' | 'mandate' | 'ai' | 'policy' | 'approval' | 'paypal' | 'security';
+
+const CATEGORIES: { key: Category; label: string; match: (t: string) => boolean }[] = [
+  { key: 'all', label: 'All', match: () => true },
+  { key: 'mandate', label: 'Mandates', match: (t) => t.startsWith('MANDATE_') },
+  { key: 'ai', label: 'AI', match: (t) => t.startsWith('AI_') },
+  { key: 'policy', label: 'Policy', match: (t) => t.startsWith('POLICY_') },
+  { key: 'approval', label: 'Approval', match: (t) => t.includes('APPROV') || t.includes('REJECTED') || t.includes('RE_EVALUATED') },
+  { key: 'paypal', label: 'PayPal', match: (t) => t.startsWith('PAYPAL_') || t.includes('CAPTURE') },
+  {
+    key: 'security',
+    label: 'Security alerts',
+    match: (t) => /MISMATCH|INVALIDATED|FAILED|DUPLICATE|BLOCKED|UNVERIFIED|UNCERTAIN/.test(t),
+  },
+];
+
+const SENSITIVE = /(secret|password|token|authorization|api_?key|access_token|card|cvv)/i;
+
+/** Defence in depth: the server already redacts; never render anything that looks sensitive. */
+function redact(value: unknown, key = ''): unknown {
+  if (key && SENSITIVE.test(key) && !/fingerprint/i.test(key)) return '***REDACTED***';
+  if (Array.isArray(value)) return value.map((v) => redact(v));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, redact(v, k)]));
+  }
+  return value;
+}
+
+function summary(e: AuditLogEntry): string {
+  const d = e.details;
+  const parts: string[] = [];
+  if (typeof d.product_name === 'string') parts.push(d.product_name);
+  if (typeof d.name === 'string') parts.push(d.name);
+  if (typeof d.provider === 'string') parts.push(d.provider === 'openai' ? `OpenAI ${d.model ?? ''}`.trim() : `${d.provider} (not AI)`);
+  if (typeof d.paypal_order_id === 'string') parts.push(`order ${d.paypal_order_id}`);
+  if (typeof d.paypal_capture_id === 'string') parts.push(`capture ${d.paypal_capture_id}`);
+  if (Array.isArray(d.violations) && d.violations.length) parts.push(`${d.violations.length} violation(s)`);
+  if (Array.isArray(d.changes) && d.changes.length) parts.push(String(d.changes[0]));
+  if (typeof d.code === 'string') parts.push(d.code);
+  return parts.join(' · ');
+}
 
 export const AuditTrail: React.FC = () => {
-  const [logs] = useState<AuditLogEntry[]>(mockAuditLogs);
-  const [filterType, setFilterType] = useState<string>('ALL');
-  const [searchQuery, setSearchQuery] = useState('');
+  const state = useAsync(() => pactApi.getAuditLogs(500));
+  const [category, setCategory] = useState<Category>('all');
+  const [query, setQuery] = useState('');
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [proposalId, setProposalId] = useState<string | null>(null);
 
-  const eventTypes = [
-    'ALL',
-    'POLICY_EVALUATED',
-    'PROPOSAL_GENERATED',
-    'APPROVAL_GRANTED',
-    'APPROVAL_REJECTED',
-    'PAYMENT_CAPTURED',
-    'MANDATE_CREATED',
-  ];
-
-  const filteredLogs = logs.filter((log) => {
-    const matchesType = filterType === 'ALL' || log.event_type === filterType;
-    const matchesSearch =
-      log.entity_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.event_type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      JSON.stringify(log.details).toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesType && matchesSearch;
-  });
-
-  const getEventBadge = (eventType: string) => {
-    switch (eventType) {
-      case 'POLICY_EVALUATED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-            <Shield className="w-3 h-3 text-indigo-600" />
-            Policy Evaluated
-          </span>
-        );
-      case 'PROPOSAL_GENERATED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
-            <FileCheck2 className="w-3 h-3 text-purple-600" />
-            Proposal Generated
-          </span>
-        );
-      case 'APPROVAL_GRANTED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            Approval Granted
-          </span>
-        );
-      case 'APPROVAL_REJECTED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
-            <AlertTriangle className="w-3 h-3 text-rose-600" />
-            Blocked / Rejected
-          </span>
-        );
-      case 'PAYMENT_CAPTURED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-            <CreditCard className="w-3 h-3 text-blue-600" />
-            Payment Captured
-          </span>
-        );
-      case 'MANDATE_CREATED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-            Mandate Created
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-700">
-            {eventType}
-          </span>
-        );
-    }
-  };
+  const rows = useMemo(() => {
+    const cat = CATEGORIES.find((c) => c.key === category)!;
+    const q = query.trim().toLowerCase();
+    return (state.data ?? []).filter(
+      (e) =>
+        cat.match(e.event_type) &&
+        (!q || e.event_type.toLowerCase().includes(q) || e.entity_id.toLowerCase().includes(q) || JSON.stringify(e.details).toLowerCase().includes(q)),
+    );
+  }, [state.data, category, query]);
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Audit Trail</h1>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Cryptographically sealed and immutable history of all autonomous agent evaluations and payment executions.
-          </p>
-        </div>
+    <div>
+      <PageHeader
+        title="Audit trail"
+        description="Append-only record of every mandate change, recommendation, policy decision, approval and PayPal call. Sensitive fields are redacted before storage."
+        actions={<RefreshButton onClick={() => void state.reload()} loading={state.loading} />}
+      />
 
-        <div className="flex items-center space-x-2 text-xs font-mono text-slate-600 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-xs">
-          <Lock className="w-3.5 h-3.5 text-indigo-600" />
-          <span>Chain Integrity: Verified</span>
-        </div>
-      </div>
-
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-          <input
-            type="text"
-            placeholder="Search audit trail by entity, details, or keywords..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 focus:bg-white transition-all placeholder:text-slate-400"
-          />
-        </div>
-
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
-          <SlidersHorizontal className="w-4 h-4 text-slate-400 mr-1 shrink-0" />
-          {eventTypes.map((type) => (
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-1.5">
+          {CATEGORIES.map((c) => (
             <button
-              key={type}
-              onClick={() => setFilterType(type)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                filterType === type
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              key={c.key}
+              onClick={() => setCategory(c.key)}
+              aria-pressed={category === c.key}
+              className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                category === c.key ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 ring-1 ring-inset ring-slate-200 hover:text-slate-900'
               }`}
             >
-              {type.replace('_', ' ')}
+              {c.label}
             </button>
           ))}
         </div>
+        <div className="relative sm:w-72">
+          <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search events, IDs, details…"
+            aria-label="Search audit events"
+            className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+          />
+        </div>
       </div>
 
-      {/* Chronological Timeline */}
-      <div className="relative border-l-2 border-indigo-200/80 ml-4 pl-6 space-y-6">
-        {filteredLogs.map((log) => (
-          <div key={log.id} className="relative group">
-            {/* Timeline bullet icon */}
-            <div className="absolute -left-[31px] top-1 w-4 h-4 rounded-full bg-white border-2 border-indigo-600 ring-4 ring-indigo-50 group-hover:scale-110 transition-transform"></div>
+      {state.error && <ErrorState message={state.error} onRetry={() => void state.reload()} />}
+      {!state.data && state.loading && <Spinner />}
 
-            {/* Event Card */}
-            <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs hover:shadow-md transition-shadow">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                  {getEventBadge(log.event_type)}
-                  <span className="text-xs font-mono font-medium text-slate-500">
-                    Entity: <strong className="text-slate-700">{log.entity_type} / {log.entity_id}</strong>
-                  </span>
-                </div>
-                <div className="text-xs text-slate-400 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5" />
-                  <span>
-                    {new Date(log.timestamp).toLocaleString([], {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      second: '2-digit',
-                    })}
-                  </span>
-                </div>
-              </div>
+      {state.data && (
+        <Card className="overflow-hidden">
+          {rows.length === 0 ? (
+            <EmptyState title={state.data.length ? 'No events match' : 'No audit events yet'} />
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {rows.map((e) => {
+                const meta = eventMeta(e.event_type);
+                const open = expanded === e.id;
+                return (
+                  <li key={e.id}>
+                    <button
+                      onClick={() => setExpanded(open ? null : e.id)}
+                      aria-expanded={open}
+                      className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-slate-50 sm:items-center"
+                    >
+                      <ChevronRight className={`mt-0.5 h-4 w-4 shrink-0 text-slate-400 transition-transform sm:mt-0 ${open ? 'rotate-90' : ''}`} />
+                      <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                        <Badge tone={meta.tone} className="self-start sm:self-auto">
+                          {meta.label}
+                        </Badge>
+                        <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{summary(e)}</span>
+                      </div>
+                      <div className="hidden shrink-0 text-right sm:block">
+                        <p className="text-xs text-slate-500">{dateTime(e.timestamp)}</p>
+                        <p className="text-[11px] text-slate-400">
+                          {e.entity_type} <Mono className="text-[11px] text-slate-400">{shortId(e.entity_id)}</Mono>
+                        </p>
+                      </div>
+                    </button>
+                    {open && (
+                      <div className="space-y-2 bg-slate-50 px-4 pb-4 pl-11">
+                        <p className="text-xs text-slate-500 sm:hidden">{dateTime(e.timestamp)}</p>
+                        <p className="text-xs text-slate-500">
+                          <span className="font-semibold">{e.event_type}</span> · {e.entity_type} <Mono className="text-[11px]">{e.entity_id}</Mono>
+                        </p>
+                        <pre className="max-h-80 overflow-auto rounded-lg bg-slate-900 p-3 text-[11px] leading-relaxed text-slate-100">
+                          {JSON.stringify(redact(e.details), null, 2)}
+                        </pre>
+                        {e.entity_type === 'Proposal' && (
+                          <button onClick={() => setProposalId(e.entity_id)} className="text-xs font-semibold text-slate-700 underline underline-offset-2">
+                            Open authorization receipt
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Card>
+      )}
 
-              {/* Event Details JSON / key-value display */}
-              <div className="bg-slate-900 text-slate-100 rounded-lg p-3 font-mono text-xs overflow-x-auto">
-                <pre className="text-[11px] leading-relaxed">
-                  {typeof log.details === 'object'
-                    ? JSON.stringify(log.details, null, 2)
-                    : log.details}
-                </pre>
-              </div>
-
-              <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-100">
-                <span className="font-mono">Log ID: {log.id}</span>
-                <span className="font-mono text-indigo-500">HMAC-SHA256: verified</span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+      <Modal open={proposalId !== null} onClose={() => setProposalId(null)} title="Authorization receipt" wide>
+        {proposalId && <ProposalCase proposalId={proposalId} onNewProposal={setProposalId} />}
+      </Modal>
     </div>
   );
 };
