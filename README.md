@@ -187,7 +187,17 @@ Open http://localhost:8000 and set `APP_BASE_URL=http://localhost:8000`. FastAPI
 3. During checkout log in with the **Personal** account's email and password (shown under the account's *View/Edit* menu). Never use real PayPal credentials.
 4. After capture, the payment appears in the Business account at https://www.sandbox.paypal.com.
 
-**Currency:** if order creation fails with `CURRENCY_NOT_SUPPORTED`, the seller account cannot receive `PAYPAL_CURRENCY`. Sandbox business accounts registered in some regions (for example India) do not accept USD by default. Either create a US Sandbox business account and use its app credentials, or set `PAYPAL_CURRENCY` to a currency the seller accepts and restart. PACT will not switch currencies on its own, because that would change what the user approved.
+**Currency:** Sandbox business accounts registered in some regions (for example India) do not accept USD by default. This shows up in one of two ways:
+
+- Order creation fails with `CURRENCY_NOT_SUPPORTED` (PACT shows this error), or
+- PayPal Checkout shows the buyer *"We're sorry. This seller doesn't accept payments in your currency."* PACT cannot detect this through the API: the order simply stays `PAYER_ACTION_REQUIRED`.
+
+Fixes, in order of reliability:
+
+1. **Use a US seller.** developer.paypal.com → Testing Tools → Sandbox Accounts → Create account → *Business*, country *United States*. Then Apps & Credentials → Create App linked to that business account, put its client ID/secret in `backend/.env`, and restart. Create a new proposal (orders belong to the app that created them).
+2. **Let the existing seller accept USD.** Log in to https://www.sandbox.paypal.com as the business account → Settings → Payments / Payment preferences → *Block payments* → "Allow payments sent to me in a currency I do not hold" → **Yes, accept and convert**. Then retry the same checkout link. Not every region shows this option.
+
+Do not "fix" this by changing `PAYPAL_CURRENCY` to a different currency for the same prices: PACT will not switch currencies on its own, because that would change what the user approved.
 
 ## Judge demo (about 3 minutes)
 

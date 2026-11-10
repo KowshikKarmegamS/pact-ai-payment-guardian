@@ -11,7 +11,7 @@
 | PayPal Sandbox OAuth | **verified live** | `GET /api/status?check_paypal=true` → `oauth.ok: true` |
 | Real Sandbox order creation | **verified live** | orders `45E59597XE7243603` (curl smoke test, later rejected) and `4JN22935LV1612144` (via UI) |
 | Capture refused before buyer approval | **verified live** | PayPal returned `PAYER_ACTION_REQUIRED`; API answered `409 ORDER_NOT_APPROVED` |
-| Buyer approval + real capture | **NOT YET VERIFIED** | needs a human to log in with the Sandbox personal account (see next steps) |
+| Buyer approval + real capture | **BLOCKED (Sandbox account config)** | Buyer login reached PayPal Checkout, which refused: "This seller doesn't accept payments in your currency." The Sandbox business account does not accept USD. Order 4JN22935LV1612144 stays PAYER_ACTION_REQUIRED. Fix: README → PayPal Sandbox setup → Currency. |
 | OpenAI path | **not verified live** | `OPENAI_API_KEY` is empty in local `.env`; recommendations use the labelled heuristic. Unit tests cover the OpenAI branch with a stubbed client. |
 | Scenario A / B / C in UI | **verified** | screenshots in `docs/screenshots/` |
 | Route refresh, `/docs`, API 404s (single-process) | **verified** | `/`, `/assistant`, `/mandates`, `/audit`, `/docs` → 200 HTML; `/api/nope` → JSON 404 |
@@ -62,7 +62,7 @@ Stop it before using port 8000 for the new build.
 
 ## Next steps (in order)
 
-1. **Finish the live end-to-end test**: in the app, open proposal `d3764342-70b0-4a8e-bf65-686a450a89d9`
+1. **Fix the Sandbox seller currency** (US business account + new app credentials, or allow USD on the existing seller), then **finish the live end-to-end test**: in the app, open proposal `d3764342-70b0-4a8e-bf65-686a450a89d9`
    (order `4JN22935LV1612144`), click *Open PayPal checkout*, log in with the **Sandbox personal** account,
    approve, then click *Capture $99.99*. Record the capture ID and audit events here.
    If order creation/capture reports `CURRENCY_NOT_SUPPORTED`, see README "PayPal Sandbox setup → Currency".
