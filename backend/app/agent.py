@@ -12,6 +12,7 @@ selected by AI_PROVIDER. When no provider is configured, the call fails, or retu
 PACT falls back to a transparent keyword heuristic and records exactly why.
 """
 
+import asyncio
 import json
 import logging
 import re
@@ -29,6 +30,7 @@ logger = logging.getLogger("pact.agent")
 PROVIDER_OPENAI = "openai"
 PROVIDER_GEMINI = "gemini"
 PROVIDER_HEURISTIC = "heuristic"
+GEMINI_RETRY_DELAY_SECONDS = 1.5
 _PROVIDER_NAMES = {PROVIDER_OPENAI: "OpenAI", PROVIDER_GEMINI: "Gemini"}
 
 
@@ -152,29 +154,45 @@ async def _call_gemini(user_prompt: str, catalog: List[Product]) -> AIAgentRecom
     import httpx
 
     settings = get_settings()
-    model = settings.GEMINI_MODEL.strip()
-    url = f"{settings.GEMINI_BASE_URL.rstrip('/')}/models/{model}:generateContent"
-    gen_config: dict = {"responseMimeType": "application/json", "maxOutputTokens": 2048}
-    thinking = _gemini_thinking_config(model, settings.GEMINI_THINKING_LEVEL)
-    if thinking:
-        gen_config["thinkingConfig"] = thinking
-    if not model.startswith("gemini-3"):
-        # Gemini 3 models are tuned for their default temperature; older ones benefit from a low one.
-        gen_config["temperature"] = 0.1
-    body = {
+    headers = {"x-goog-api-key": settings.GEMINI_API_KEY.strip(), "Content-Type": "application/json"}
+    contents = {
         "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "contents": [{"role": "user", "parts": [{"text": _user_message(user_prompt, catalog)}]}],
-        "generationConfig": gen_config,
     }
-    headers = {"x-goog-api-key": settings.GEMINI_API_KEY.strip(), "Content-Type": "application/json"}
+
+    async def post(client: "httpx.AsyncClient", model_name: str) -> "httpx.Response":
+        gen_config: dict = {"responseMimeType": "application/json", "maxOutputTokens": 2048}
+        thinking = _gemini_thinking_config(model_name, settings.GEMINI_THINKING_LEVEL)
+        if thinking:
+            gen_config["thinkingConfig"] = thinking
+        if not model_name.startswith("gemini-3"):
+            # Gemini 3 models are tuned for their default temperature; older ones benefit from a low one.
+            gen_config["temperature"] = 0.1
+        url = f"{settings.GEMINI_BASE_URL.rstrip('/')}/models/{model_name}:generateContent"
+        body = {**contents, "generationConfig": gen_config}
+        resp = await client.post(url, json=body, headers=headers)
+        if resp.status_code == 400 and thinking and "thinking" in resp.text.lower():
+            # The model rejects this thinking setting: retry once with the model's default.
+            gen_config.pop("thinkingConfig", None)
+            logger.info("Gemini model %s rejected thinking config; retrying without it", model_name)
+            resp = await client.post(url, json=body, headers=headers)
+        return resp
+
+    model = settings.GEMINI_MODEL.strip()
+    backup = settings.GEMINI_FALLBACK_MODEL.strip()
     try:
         async with httpx.AsyncClient(timeout=settings.AI_TIMEOUT_SECONDS) as client:
-            response = await client.post(url, json=body, headers=headers)
-            if response.status_code == 400 and thinking and "thinking" in response.text.lower():
-                # The model rejects this thinking setting: retry once with the model's default.
-                gen_config.pop("thinkingConfig", None)
-                logger.info("Gemini model %s rejected thinking config; retrying without it", model)
-                response = await client.post(url, json=body, headers=headers)
+            response = await post(client, model)
+            if response.status_code in (500, 503):
+                # Transient overload ("model is experiencing high demand"): try the backup model once,
+                # or the same model again if no backup is configured. After that PACT falls back honestly.
+                await asyncio.sleep(GEMINI_RETRY_DELAY_SECONDS)
+                if backup and backup != model:
+                    logger.info("Gemini %s returned HTTP %s; trying backup model %s", model, response.status_code, backup)
+                    model = backup
+                else:
+                    logger.info("Gemini returned HTTP %s; retrying once", response.status_code)
+                response = await post(client, model)
     except httpx.TimeoutException:
         raise AIProviderError("Gemini request timed out")
     except httpx.HTTPError as exc:

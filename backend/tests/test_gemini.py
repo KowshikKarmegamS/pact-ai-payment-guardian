@@ -126,6 +126,7 @@ async def test_gemini_malformed_json_falls_back(gemini):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status,needle", [(429, "quota"), (403, "key rejected"), (404, "model not found"), (500, "HTTP 500")])
+@pytest.mark.usefixtures("no_retry_delay")
 async def test_gemini_http_errors_fall_back_without_leaking_key(gemini, status, needle):
     gemini["respond"] = lambda r: httpx.Response(status, json={"error": {"status": "X", "message": "key test-gemini-key bad"}})
     rec = await agent_module.generate_shopping_recommendation("ergonomic mouse", None, _catalog())
@@ -195,3 +196,54 @@ def test_status_reports_gemini_mode_without_key(client, gemini):
     assert data["ai"]["mode"] == "gemini"
     assert data["ai"]["model"] == get_settings().GEMINI_MODEL
     assert "test-gemini-key" not in json.dumps(data)
+
+
+@pytest.mark.asyncio
+async def test_transient_503_is_retried_once_then_succeeds(gemini, monkeypatch):
+    monkeypatch.setattr(agent_module, "GEMINI_RETRY_DELAY_SECONDS", 0)
+    calls = {"n": 0}
+
+    def respond(req):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(503, json={"error": {"status": "UNAVAILABLE", "message": "high demand"}})
+        return httpx.Response(200, json=_gemini_ok(OK_JSON))
+
+    gemini["respond"] = respond
+    rec = await agent_module.generate_shopping_recommendation("ergonomic mouse", None, _catalog())
+    assert rec.provider == "gemini" and rec.fallback_reason is None
+    assert calls["n"] == 2
+    # The second attempt went to the configured backup model.
+    assert gemini["requests"][0].url.path.endswith(f"/models/{get_settings().GEMINI_MODEL}:generateContent")
+    assert gemini["requests"][1].url.path.endswith(f"/models/{get_settings().GEMINI_FALLBACK_MODEL}:generateContent")
+
+
+@pytest.mark.asyncio
+async def test_without_backup_model_the_same_model_is_retried(gemini, monkeypatch):
+    monkeypatch.setattr(agent_module, "GEMINI_RETRY_DELAY_SECONDS", 0)
+    monkeypatch.setattr(get_settings(), "GEMINI_FALLBACK_MODEL", "")
+    state = {"n": 0}
+
+    def respond(req):
+        state["n"] += 1
+        return httpx.Response(503, json={}) if state["n"] == 1 else httpx.Response(200, json=_gemini_ok(OK_JSON))
+
+    gemini["respond"] = respond
+    rec = await agent_module.generate_shopping_recommendation("ergonomic mouse", None, _catalog())
+    assert rec.provider == "gemini"
+    assert {r.url.path for r in gemini["requests"]} == {f"/v1beta/models/{get_settings().GEMINI_MODEL}:generateContent"}
+
+
+@pytest.mark.asyncio
+async def test_persistent_503_falls_back_after_one_retry(gemini, monkeypatch):
+    monkeypatch.setattr(agent_module, "GEMINI_RETRY_DELAY_SECONDS", 0)
+    gemini["respond"] = lambda r: httpx.Response(503, json={"error": {"status": "UNAVAILABLE"}})
+    rec = await agent_module.generate_shopping_recommendation("ergonomic mouse", None, _catalog())
+    assert rec.provider == "heuristic"
+    assert "503" in rec.fallback_reason
+    assert len(gemini["requests"]) == 2
+
+
+@pytest.fixture
+def no_retry_delay(monkeypatch):
+    monkeypatch.setattr(agent_module, "GEMINI_RETRY_DELAY_SECONDS", 0)

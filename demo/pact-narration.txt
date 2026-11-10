@@ -1,0 +1,20 @@
+PACT - The AI Payment Guardian: narration script
+Voice: Microsoft David Desktop (Windows built-in text-to-speech)
+
+[0:00.0] PACT. The AI Payment Guardian. Give AI the power to act, not unrestricted access to your money.
+[0:12.0] AI agents can now shop for us. But to pay, we hand them a payment method with no limits. One injected instruction, or one hallucinated price, and real money moves before anyone approves it.
+[0:32.1] PACT sits between the agent and PayPal. The AI can only recommend. A deterministic policy engine authorizes, a human approves, and PayPal executes.
+[0:43.9] It starts with a spending mandate. This one allows electronics from one merchant, up to $100 per purchase.
+[0:52.4] Now the agent is asked for a keyboard that costs $125. Gemini recommends it, and the policy engine answers immediately.
+[1:02.3] Blocked. Attempted $125. Allowed $100. There is no approve button and no PayPal order. The AI can recommend a purchase, but it cannot override the user's spending mandate.
+[1:17.4] Next, an eligible request. Gemini picks an $89 keyboard, and every rule passes. But passing policy is not authorization.
+[1:28.4] I review the budget impact, then approve this exact purchase. My approval is bound to a fingerprint of the product, the price and the mandate.
+[1:37.9] PACT creates a real PayPal Sandbox order, and the buyer approves it in PayPal Checkout.
+[1:44.4] Back in PACT, the server asks PayPal directly whether the buyer approved. Only then can the payment be captured.
+[1:52.4] Captured. A real PayPal capture ID, status COMPLETED, for exactly $89.
+[2:00.3] What if something changes after approval? I approve a second keyboard. Then the merchant raises the price.
+[2:08.4] The approval is void at once. A change can never silently inherit an old approval.
+[2:15.0] Every step is recorded in the audit trail: the recommendation, the policy decision, the approval, the PayPal order and the capture.
+[2:24.2] AI recommends. The policy engine authorizes. A human approves. PayPal executes. PACT. The AI Payment Guardian.
+
+Total running time: 2:41.2

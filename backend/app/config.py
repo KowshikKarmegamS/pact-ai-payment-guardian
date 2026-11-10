@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-3.5-flash"
     # "minimal" keeps latency low; empty uses the model default. Rejected levels are retried without it.
     GEMINI_THINKING_LEVEL: str = "minimal"
+    # Tried once when the primary model answers 500/503 ("high demand"). Empty disables it.
+    GEMINI_FALLBACK_MODEL: str = "gemini-3.5-flash-lite"
     GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta"
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"
