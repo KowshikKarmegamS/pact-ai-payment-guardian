@@ -105,8 +105,14 @@ def migrate_schema(bind: Engine) -> None:
             "FAILED": ("PAYMENT_FAILED", None),
         }
         for old, (new, reason) in legacy.items():
+            # "CAPTURED" is also a current status. Only rows written by the old version are legacy:
+            # those have no PayPal capture status recorded. Verified captures must never be touched.
+            extra = " AND paypal_capture_status IS NULL" if old == "CAPTURED" else ""
             conn.execute(
-                text("UPDATE proposals SET status = :new, status_reason = COALESCE(:reason, status_reason) WHERE status = :old"),
+                text(
+                    "UPDATE proposals SET status = :new, status_reason = COALESCE(:reason, status_reason) "
+                    "WHERE status = :old" + extra
+                ),
                 {"new": new, "old": old, "reason": reason},
             )
         # Legacy REJECTED covered both policy and human rejections.

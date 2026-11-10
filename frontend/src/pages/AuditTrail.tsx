@@ -1,166 +1,158 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronRight, Search } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ArrowUpRight, ChevronDown, Search, ShieldCheck } from 'lucide-react';
 import { pactApi } from '../api/pact';
-import type { AuditLogEntry } from '../types';
-import { aiLabel, dateTime, eventMeta, shortId } from '../lib/format';
+import { Badge, Card, EmptyState, ErrorState, Mono, PageHeader, RefreshButton, Segmented, SkeletonRows, TONE_DOT, cx, inputClass } from '../components/ui';
+import { eventMeta, explainEvent, parseDate, shortId, timeOnly, type EventCategory } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
-import { ProposalCase } from '../components/ProposalCase';
-import { Badge, Card, EmptyState, ErrorState, Modal, Mono, PageHeader, RefreshButton, Spinner } from '../components/ui';
+import type { AuditLogEntry } from '../types';
 
-type Category = 'all' | 'mandate' | 'ai' | 'policy' | 'approval' | 'paypal' | 'security';
+type Filter = 'all' | 'alerts' | EventCategory;
 
-const CATEGORIES: { key: Category; label: string; match: (t: string) => boolean }[] = [
-  { key: 'all', label: 'All', match: () => true },
-  { key: 'mandate', label: 'Mandates', match: (t) => t.startsWith('MANDATE_') },
-  { key: 'ai', label: 'AI', match: (t) => t.startsWith('AI_') },
-  { key: 'policy', label: 'Policy', match: (t) => t.startsWith('POLICY_') },
-  { key: 'approval', label: 'Approval', match: (t) => t.includes('APPROV') || t.includes('REJECTED') || t.includes('RE_EVALUATED') },
-  { key: 'paypal', label: 'PayPal', match: (t) => t.startsWith('PAYPAL_') || t.includes('CAPTURE') },
-  {
-    key: 'security',
-    label: 'Security alerts',
-    match: (t) => /MISMATCH|INVALIDATED|FAILED|DUPLICATE|BLOCKED|UNVERIFIED|UNCERTAIN/.test(t),
-  },
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: 'all', label: 'All events' },
+  { value: 'alerts', label: 'Security alerts' },
+  { value: 'policy', label: 'Policy' },
+  { value: 'approval', label: 'Approvals' },
+  { value: 'paypal', label: 'PayPal' },
+  { value: 'mandate', label: 'Mandates' },
+  { value: 'ai', label: 'AI' },
+  { value: 'catalog', label: 'Catalog' },
 ];
 
-const SENSITIVE = /(secret|password|token|authorization|api_?key|access_token|card|cvv)/i;
+const SENSITIVE = /(secret|password|token|authorization|api_?key|card|cvv)/i;
 
 /** Defence in depth: the server already redacts; never render anything that looks sensitive. */
 function redact(value: unknown, key = ''): unknown {
-  if (key && SENSITIVE.test(key) && !/fingerprint/i.test(key)) return '***REDACTED***';
+  if (key && SENSITIVE.test(key)) return '***REDACTED***';
   if (Array.isArray(value)) return value.map((v) => redact(v));
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, redact(v, k)]));
-  }
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, redact(v, k)]));
   return value;
 }
 
-function summary(e: AuditLogEntry): string {
-  const d = e.details;
-  const parts: string[] = [];
-  if (typeof d.product_name === 'string') parts.push(d.product_name);
-  if (typeof d.name === 'string') parts.push(d.name);
-  if (typeof d.provider === 'string') parts.push(d.provider === 'heuristic' ? 'heuristic (not AI)' : aiLabel(d.provider, typeof d.model === 'string' ? d.model : null));
-  if (typeof d.paypal_order_id === 'string') parts.push(`order ${d.paypal_order_id}`);
-  if (typeof d.paypal_capture_id === 'string') parts.push(`capture ${d.paypal_capture_id}`);
-  if (Array.isArray(d.violations) && d.violations.length) parts.push(`${d.violations.length} violation(s)`);
-  if (Array.isArray(d.changes) && d.changes.length) parts.push(String(d.changes[0]));
-  if (typeof d.code === 'string') parts.push(d.code);
-  return parts.join(' · ');
+const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
+
+function dayLabel(iso: string): string {
+  const d = parseDate(iso);
+  if (!d) return 'Unknown date';
+  const today = new Date();
+  const y = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (d.toDateString() === y.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 }
+
+const EventRow: React.FC<{ e: AuditLogEntry; last: boolean }> = ({ e, last }) => {
+  const [open, setOpen] = useState(false);
+  const meta = eventMeta(e.event_type);
+  const order = str(e.details.paypal_order_id);
+  const capture = str(e.details.paypal_capture_id);
+  return (
+    <li className="relative flex gap-4 pb-5 last:pb-0">
+      {!last && <span className="absolute left-[5px] top-5 h-full w-px bg-line" />}
+      <span className={cx('relative z-10 mt-1.5 h-[11px] w-[11px] shrink-0 rounded-full ring-4 ring-surface', TONE_DOT[meta.tone])} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-medium text-fg">{meta.label}</p>
+            {meta.alert && <Badge tone={meta.tone}>security</Badge>}
+          </div>
+          <time className="font-mono text-[11px] text-faint">{timeOnly(e.timestamp)}</time>
+        </div>
+        <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{explainEvent(e)}</p>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-faint">
+          {e.entity_type === 'Proposal' ? (
+            <Link to={`/proposals/${e.entity_id}`} className="inline-flex items-center gap-1 text-accent hover:underline">
+              Transaction <Mono className="text-[11px] text-accent">{shortId(e.entity_id)}</Mono> <ArrowUpRight className="h-3 w-3" />
+            </Link>
+          ) : (
+            <span>{e.entity_type} <Mono className="text-[11px] text-faint">{shortId(e.entity_id)}</Mono></span>
+          )}
+          {order && <span>Order <Mono className="text-[11px] text-muted">{order}</Mono></span>}
+          {capture && <span>Capture <Mono className="text-[11px] text-ok">{capture}</Mono></span>}
+          <button onClick={() => setOpen((v) => !v)} aria-expanded={open} className="inline-flex items-center gap-0.5 hover:text-muted">
+            Raw record <ChevronDown className={cx('h-3 w-3 transition-transform', open && 'rotate-180')} />
+          </button>
+        </div>
+        {open && (
+          <pre className="mt-2 max-h-72 overflow-auto rounded-lg border border-line bg-ink p-3 font-mono text-[11px] leading-relaxed text-muted animate-fade">
+            {JSON.stringify({ event: e.event_type, entity: `${e.entity_type}:${e.entity_id}`, at: e.timestamp, details: redact(e.details) }, null, 2)}
+          </pre>
+        )}
+      </div>
+    </li>
+  );
+};
 
 export const AuditTrail: React.FC = () => {
   const state = useAsync(() => pactApi.getAuditLogs(500));
-  const [category, setCategory] = useState<Category>('all');
+  const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
-  const [expanded, setExpanded] = useState<number | null>(null);
-  const [proposalId, setProposalId] = useState<string | null>(null);
 
   const rows = useMemo(() => {
-    const cat = CATEGORIES.find((c) => c.key === category)!;
     const q = query.trim().toLowerCase();
-    return (state.data ?? []).filter(
-      (e) =>
-        cat.match(e.event_type) &&
-        (!q || e.event_type.toLowerCase().includes(q) || e.entity_id.toLowerCase().includes(q) || JSON.stringify(e.details).toLowerCase().includes(q)),
-    );
-  }, [state.data, category, query]);
+    return (state.data ?? []).filter((e) => {
+      const meta = eventMeta(e.event_type);
+      if (filter === 'alerts' ? !meta.alert : filter !== 'all' && meta.category !== filter) return false;
+      if (!q) return true;
+      return meta.label.toLowerCase().includes(q) || e.entity_id.toLowerCase().includes(q) || explainEvent(e).toLowerCase().includes(q) || JSON.stringify(e.details).toLowerCase().includes(q);
+    });
+  }, [state.data, filter, query]);
+
+  const groups = useMemo(() => {
+    const out: { label: string; events: AuditLogEntry[] }[] = [];
+    rows.forEach((e) => {
+      const label = dayLabel(e.timestamp);
+      const g = out[out.length - 1];
+      if (g && g.label === label) g.events.push(e);
+      else out.push({ label, events: [e] });
+    });
+    return out;
+  }, [rows]);
+
+  const alerts = useMemo(() => (state.data ?? []).filter((e) => eventMeta(e.event_type).alert).length, [state.data]);
 
   return (
     <div>
       <PageHeader
-        title="Audit trail"
-        description="Append-only record of every mandate change, recommendation, policy decision, approval and PayPal call. Sensitive fields are redacted before storage."
+        eyebrow="Accountability"
+        title="Security & audit trail"
+        description="An append-only record of every mandate change, recommendation, policy decision, approval and PayPal call. Sensitive fields are redacted before they are stored."
         actions={<RefreshButton onClick={() => void state.reload()} loading={state.loading} />}
       />
 
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-1.5">
-          {CATEGORIES.map((c) => (
-            <button
-              key={c.key}
-              onClick={() => setCategory(c.key)}
-              aria-pressed={category === c.key}
-              className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                category === c.key ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 ring-1 ring-inset ring-slate-200 hover:text-slate-900'
-              }`}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
-        <div className="relative sm:w-72">
-          <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search events, IDs, details…"
-            aria-label="Search audit events"
-            className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
-          />
+      <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <Segmented label="Filter events" value={filter} onChange={setFilter} options={FILTERS.map((f) => (f.value === 'alerts' ? { ...f, count: alerts } : f.value === 'all' ? { ...f, count: state.data?.length ?? 0 } : f))} />
+        <div className="relative xl:w-80">
+          <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-faint" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search events, IDs, details…" aria-label="Search audit events" className={cx(inputClass, 'pl-9')} />
         </div>
       </div>
 
       {state.error && <ErrorState message={state.error} onRetry={() => void state.reload()} />}
-      {!state.data && state.loading && <Spinner />}
 
-      {state.data && (
-        <Card className="overflow-hidden">
-          {rows.length === 0 ? (
-            <EmptyState title={state.data.length ? 'No events match' : 'No audit events yet'} />
-          ) : (
-            <ul className="divide-y divide-slate-100">
-              {rows.map((e) => {
-                const meta = eventMeta(e.event_type);
-                const open = expanded === e.id;
-                return (
-                  <li key={e.id}>
-                    <button
-                      onClick={() => setExpanded(open ? null : e.id)}
-                      aria-expanded={open}
-                      className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-slate-50 sm:items-center"
-                    >
-                      <ChevronRight className={`mt-0.5 h-4 w-4 shrink-0 text-slate-400 transition-transform sm:mt-0 ${open ? 'rotate-90' : ''}`} />
-                      <div className="flex min-w-0 flex-1 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-                        <Badge tone={meta.tone} className="self-start sm:self-auto">
-                          {meta.label}
-                        </Badge>
-                        <span className="min-w-0 flex-1 truncate text-sm text-slate-700">{summary(e)}</span>
-                      </div>
-                      <div className="hidden shrink-0 text-right sm:block">
-                        <p className="text-xs text-slate-500">{dateTime(e.timestamp)}</p>
-                        <p className="text-[11px] text-slate-400">
-                          {e.entity_type} <Mono className="text-[11px] text-slate-400">{shortId(e.entity_id)}</Mono>
-                        </p>
-                      </div>
-                    </button>
-                    {open && (
-                      <div className="space-y-2 bg-slate-50 px-4 pb-4 pl-11">
-                        <p className="text-xs text-slate-500 sm:hidden">{dateTime(e.timestamp)}</p>
-                        <p className="text-xs text-slate-500">
-                          <span className="font-semibold">{e.event_type}</span> · {e.entity_type} <Mono className="text-[11px]">{e.entity_id}</Mono>
-                        </p>
-                        <pre className="max-h-80 overflow-auto rounded-lg bg-slate-900 p-3 text-[11px] leading-relaxed text-slate-100">
-                          {JSON.stringify(redact(e.details), null, 2)}
-                        </pre>
-                        {e.entity_type === 'Proposal' && (
-                          <button onClick={() => setProposalId(e.entity_id)} className="text-xs font-semibold text-slate-700 underline underline-offset-2">
-                            Open authorization receipt
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </Card>
-      )}
-
-      <Modal open={proposalId !== null} onClose={() => setProposalId(null)} title="Authorization receipt" wide>
-        {proposalId && <ProposalCase proposalId={proposalId} onNewProposal={setProposalId} />}
-      </Modal>
+      <Card>
+        {!state.data ? (
+          <SkeletonRows rows={6} />
+        ) : rows.length === 0 ? (
+          <EmptyState icon={<ShieldCheck className="h-8 w-8" />} title={state.data.length ? 'No events match' : 'No audit events yet'} />
+        ) : (
+          <div className="divide-y divide-line">
+            {groups.map((g) => (
+              <section key={g.label} className="px-5 py-5 sm:px-6">
+                <h2 className="mb-4 flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.14em] text-faint">
+                  {g.label}
+                  <span className="h-px flex-1 bg-line" />
+                  <span className="normal-case tracking-normal">{g.events.length} event{g.events.length === 1 ? '' : 's'}</span>
+                </h2>
+                <ol>
+                  {g.events.map((e, i) => <EventRow key={e.id} e={e} last={i === g.events.length - 1} />)}
+                </ol>
+              </section>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 };

@@ -21,6 +21,8 @@ export interface MandateRestrictions {
   prohibited_merchants?: string[];
 }
 
+export type MandateStatus = 'active' | 'paused' | 'expired' | 'revoked';
+
 export interface Mandate {
   id: string;
   name: string;
@@ -30,6 +32,9 @@ export interface Mandate {
   allowed_categories: string[];
   restrictions: MandateRestrictions;
   is_active: boolean;
+  expires_at: string | null;
+  revoked_at: string | null;
+  status: MandateStatus;
   created_at: string;
   updated_at: string;
   spent_budget: DecimalString;
@@ -44,6 +49,7 @@ export interface MandateInput {
   allowed_categories?: string[];
   restrictions?: MandateRestrictions;
   is_active?: boolean;
+  expires_at?: string | null;
 }
 
 export type ProposalStatus =
@@ -64,6 +70,8 @@ export interface PolicyCheck {
   label: string;
   passed: boolean;
   detail: string;
+  actual?: string | null;
+  limit?: string | null;
 }
 
 export interface PolicyResult {
@@ -72,6 +80,17 @@ export interface PolicyResult {
   checks: PolicyCheck[];
   remaining_budget?: DecimalString | null;
   currency?: string | null;
+}
+
+export interface Alternative {
+  product_id: number;
+  name: string;
+  merchant: string;
+  category: string;
+  price: DecimalString;
+  in_stock: boolean;
+  eligible: boolean;
+  blocking: string[];
 }
 
 export interface Proposal {
@@ -93,6 +112,7 @@ export interface Proposal {
   ai_model?: string | null;
   ai_fallback_reason?: string | null;
   supersedes_id?: string | null;
+  alternatives?: Alternative[] | null;
   policy_checks?: PolicyCheck[] | null;
   remaining_budget_at_decision?: DecimalString | null;
   proposal_fingerprint?: string | null;
@@ -154,6 +174,8 @@ export interface ReceiptMandate {
   id: string;
   name: string;
   is_active: boolean;
+  status: MandateStatus;
+  expires_at: string | null;
   max_budget: DecimalString;
   currency: string;
   allowed_merchants: string[];
@@ -161,8 +183,20 @@ export interface ReceiptMandate {
   restrictions: MandateRestrictions;
 }
 
+export interface ReceiptBudget {
+  max_budget: DecimalString;
+  spent: DecimalString;
+  committed_other: DecimalString;
+  available: DecimalString;
+  this_purchase: DecimalString;
+  remaining_after: DecimalString;
+  counted: boolean;
+}
+
 export interface AuthorizationReceipt {
   proposal: Proposal;
+  product: Product | null;
+  budget: ReceiptBudget | null;
   mandate: ReceiptMandate;
   decision: 'BLOCKED' | 'AUTHORIZED';
   decision_checks: PolicyCheck[];
@@ -176,6 +210,11 @@ export interface AuthorizationReceipt {
     changes: string[];
   };
   timeline: AuditLogEntry[];
+}
+
+export interface ProductUpdateResult {
+  product: Product;
+  approvals_invalidated: number;
 }
 
 export interface SystemStatus {

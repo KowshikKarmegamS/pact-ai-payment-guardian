@@ -204,3 +204,31 @@ def test_blocked_receipt_shows_attempted_vs_allowed(client, sample_mandate, db_s
     assert checks["max_unit_price"]["actual"] == "$1,599.00"
     assert checks["max_unit_price"]["limit"] == "up to $150.00"
     assert checks["budget"]["passed"] is False
+
+
+# ---------------- migration safety ----------------
+
+def test_startup_migration_never_demotes_verified_captures(client, sample_mandate, sample_product, fake_paypal, db_session):
+    """Regression: the legacy-status migration ran on every start and reset CAPTURED rows."""
+    from sqlalchemy import text
+
+    from app.database import migrate_schema
+
+    p = _gen(client, sample_mandate.id)["proposal"]
+    _approve(client, p)
+    order = client.post(f"/api/payments/{p['id']}/create-order").json()
+    fake_paypal.buyer_approves(order["order_id"])
+    assert client.post(f"/api/payments/{p['id']}/capture").json()["proposal"]["status"] == "CAPTURED"
+
+    bind = db_session.get_bind()
+    migrate_schema(bind)
+    migrate_schema(bind)
+    db_session.expire_all()
+    assert db_session.get(Proposal, p["id"]).status == ProposalStatus.CAPTURED
+
+    # A genuinely legacy row (no capture status recorded) is still sent for verification.
+    db_session.execute(text("UPDATE proposals SET paypal_capture_status = NULL WHERE id = :i"), {"i": p["id"]})
+    db_session.commit()
+    migrate_schema(bind)
+    db_session.expire_all()
+    assert db_session.get(Proposal, p["id"]).status == ProposalStatus.CAPTURE_PENDING
