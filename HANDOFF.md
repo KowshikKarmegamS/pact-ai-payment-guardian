@@ -1,6 +1,6 @@
 # HANDOFF.md — PACT project state
 
-> Last updated: 2026-11-10 (branch `feat/judge-ready-payment-guardian`)
+> Last updated: 2026-11-11 (branch `feat/judge-ready-payment-guardian`)
 
 ## Status at a glance
 
@@ -10,8 +10,9 @@
 | Frontend production build | **passes**, no mock imports | `cd frontend && npm run build` |
 | PayPal Sandbox OAuth | **verified live** | `GET /api/status?check_paypal=true` → `oauth.ok: true` |
 | Real Sandbox order creation | **verified live** | orders `45E59597XE7243603` (curl smoke test, later rejected) and `4JN22935LV1612144` (via UI) |
+| **Full live E2E (buyer approval + capture)** | **VERIFIED** | Order `05V70376MR1821151` → buyer approved in Sandbox Checkout → PACT verified `APPROVED` with PayPal → capture `9XY78096Y6982133J` **COMPLETED**, 99.99 USD; proposal `61332dde-2664-4da7-a7fb-d0265fde2314` is CAPTURED; repeat capture made no PayPal call |
+| Sandbox seller currency | **resolved** | The original Sandbox business account (India) refused USD ("This seller doesn't accept payments in your currency"). Replaced with a US business account + new app credentials in `backend/.env`. |
 | Capture refused before buyer approval | **verified live** | PayPal returned `PAYER_ACTION_REQUIRED`; API answered `409 ORDER_NOT_APPROVED` |
-| Buyer approval + real capture | **BLOCKED (Sandbox account config)** | Buyer login reached PayPal Checkout, which refused: "This seller doesn't accept payments in your currency." The Sandbox business account does not accept USD. Order 4JN22935LV1612144 stays PAYER_ACTION_REQUIRED. Fix: README → PayPal Sandbox setup → Currency. |
 | OpenAI path | **not verified live** | `OPENAI_API_KEY` is empty in local `.env`; recommendations use the labelled heuristic. Unit tests cover the OpenAI branch with a stubbed client. |
 | Scenario A / B / C in UI | **verified** | screenshots in `docs/screenshots/` |
 | Route refresh, `/docs`, API 404s (single-process) | **verified** | `/`, `/assistant`, `/mandates`, `/audit`, `/docs` → 200 HTML; `/api/nope` → JSON 404 |
@@ -62,13 +63,10 @@ Stop it before using port 8000 for the new build.
 
 ## Next steps (in order)
 
-1. **Fix the Sandbox seller currency** (US business account + new app credentials, or allow USD on the existing seller), then **finish the live end-to-end test**: in the app, open proposal `d3764342-70b0-4a8e-bf65-686a450a89d9`
-   (order `4JN22935LV1612144`), click *Open PayPal checkout*, log in with the **Sandbox personal** account,
-   approve, then click *Capture $99.99*. Record the capture ID and audit events here.
-   If order creation/capture reports `CURRENCY_NOT_SUPPORTED`, see README "PayPal Sandbox setup → Currency".
-2. Add `OPENAI_API_KEY` to `backend/.env`, restart, and run scenarios A–C to confirm the OpenAI path
-   (sidebar should read "OpenAI gpt-4o-mini").
-3. Re-take screenshots of a CAPTURED receipt for the README.
-4. Record the demo video (`docs/DEMO_SCRIPT.md`), then add the link to README and Devpost.
-5. Optional: deploy to Render (paid Starter plan + disk), set `APP_BASE_URL`, verify `/api/status?check_paypal=true`.
-6. Merge `feat/judge-ready-payment-guardian` into `main`.
+1. Add `OPENAI_API_KEY` to `backend/.env`, restart, and run scenarios A–C to confirm the OpenAI path
+   (sidebar should read "OpenAI gpt-4o-mini"). Until then every recommendation is the labelled heuristic.
+2. Record the demo video (`docs/DEMO_SCRIPT.md`) and add the link to README and `docs/DEVPOST.md`.
+3. Optional: deploy to Render (paid Starter plan + disk), set `APP_BASE_URL`, verify `/api/status?check_paypal=true`.
+   Build the Docker image once locally first (`docker build -t pact .`) with Docker Desktop running.
+4. Merge `feat/judge-ready-payment-guardian` into `main` and push.
+5. Stop the old v1.0.0 server still listening on port 8000.

@@ -105,7 +105,7 @@ export const Dashboard: React.FC = () => {
             <Stat label="Active mandates" value={metrics.activeCount} hint={`${metrics.totalMandates} total`} />
             <Stat label="Remaining budget" value={money(metrics.remaining, metrics.currency)} hint={`of ${money(metrics.allocated, metrics.currency)} active`} />
             <Stat label="Awaiting your approval" value={metrics.pending} hint={`${metrics.inFlight} in PayPal flow`} />
-            <Stat label="Captured volume" value={money(metrics.capturedVolume, metrics.currency)} hint={`${metrics.capturedCount} verified PayPal captures`} />
+            <Stat label="Captured volume" value={money(metrics.capturedVolume, metrics.currency)} hint={`${metrics.capturedCount} verified PayPal capture${metrics.capturedCount === 1 ? '' : 's'}`} />
             <Stat label="Blocked by policy" value={metrics.blocked} hint="never reached approval" />
           </div>
 

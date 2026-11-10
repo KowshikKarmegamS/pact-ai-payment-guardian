@@ -92,7 +92,12 @@ export const AuthorizationReceipt: React.FC<{ receipt: Receipt }> = ({ receipt }
                 : `Authorized by the policy engine: all ${receipt.decision_checks.length} rules passed`}
             </p>
             <p className={`text-xs ${blocked ? 'text-red-700' : 'text-emerald-700'}`}>
-              Deterministic code decided this, not the AI. {blocked ? 'No approval or payment is possible.' : 'A human must still approve.'}
+              Deterministic code decided this, not the AI.{' '}
+              {blocked
+                ? 'No approval or payment is possible.'
+                : p.approved_at
+                  ? `A human approved this exact proposal on ${dateTime(p.approved_at)}.`
+                  : 'A human must still approve.'}
             </p>
           </div>
         </div>

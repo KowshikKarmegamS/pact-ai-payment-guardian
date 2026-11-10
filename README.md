@@ -35,6 +35,10 @@ Every step is written to an append-only, redacted audit log, and every proposal 
 
 Real screens from the running app (PayPal Sandbox, heuristic recommender because no OpenAI key was configured at capture time).
 
+| Scenario A: verified PayPal capture | Overview from live data |
+|---|---|
+| ![Captured](docs/screenshots/scenario-a-captured.jpg) | ![Dashboard](docs/screenshots/dashboard.jpg) |
+
 | Scenario A: awaiting human approval | Scenario B: blocked by policy |
 |---|---|
 | ![Scenario A](docs/screenshots/scenario-a-awaiting-approval.jpg) | ![Scenario B](docs/screenshots/scenario-b-blocked.jpg) |
@@ -44,6 +48,23 @@ Real screens from the running app (PayPal Sandbox, heuristic recommender because
 Mobile: ![Mobile transactions](docs/screenshots/mobile-transactions.jpg)
 
 ---
+
+## Verified end-to-end (PayPal Sandbox, 2026-11-11)
+
+A real run of scenario A, start to finish:
+
+| Step | Result |
+|---|---|
+| Recommendation | Logitech MX Master 3S Advanced Wireless Mouse, TechHub, $99.99 (heuristic recommender: no OpenAI key configured) |
+| Policy | 11 / 11 rules passed |
+| Human approval | bound to fingerprint `b44a6c40…ed0b818` |
+| PayPal order | `05V70376MR1821151` created (`PAYER_ACTION_REQUIRED`) |
+| Capture before buyer approval | refused: PayPal still reported `PAYER_ACTION_REQUIRED` (checked on an earlier order) |
+| Buyer approval | Sandbox personal account approved in PayPal Checkout; PayPal returned to PACT, and PACT asked PayPal directly, which reported `APPROVED` |
+| Capture | PayPal `201 Created`; capture ID **`9XY78096Y6982133J`**, status **COMPLETED**, **99.99 USD**; order status `COMPLETED` |
+| Repeat capture | returned the stored result; PayPal was **not** called again (`DUPLICATE_CAPTURE_PREVENTED`) |
+| Audit timeline | AI_RECOMMENDATION_GENERATED → POLICY_CHECK_PASSED → PROPOSAL_HUMAN_APPROVED → PAYPAL_ORDER_CREATED → PAYPAL_BUYER_APPROVED → PAYPAL_CAPTURE_ATTEMPTED → PAYPAL_PAYMENT_CAPTURED → DUPLICATE_CAPTURE_PREVENTED |
+| Mandate | spent $99.99, committed $0.00, remaining $650.01 of $750.00 |
 
 ## Architecture
 
