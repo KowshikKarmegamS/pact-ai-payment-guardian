@@ -63,8 +63,8 @@ Stop it before using port 8000 for the new build.
 
 ## Next steps (in order)
 
-2. Record the demo video (`docs/DEMO_SCRIPT.md`) and add the link to README and `docs/DEVPOST.md`.
-3. Optional: deploy to Render (paid Starter plan + disk), set `APP_BASE_URL`, verify `/api/status?check_paypal=true`.
+1. Record the demo video (`docs/DEMO_SCRIPT.md`) and add the link to README and `docs/DEVPOST.md`.
+2. Optional: deploy to Render (paid Starter plan + disk), set `APP_BASE_URL`, verify `/api/status?check_paypal=true`.
    Build the Docker image once locally first (`docker build -t pact .`) with Docker Desktop running.
-4. Merge `feat/judge-ready-payment-guardian` into `main` and push.
-5. Stop the old v1.0.0 server still listening on port 8000.
+3. Merge `feat/judge-ready-payment-guardian` into `main` and push.
+4. Stop the old v1.0.0 server still listening on port 8000.
