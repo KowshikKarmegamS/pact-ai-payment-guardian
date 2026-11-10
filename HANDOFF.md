@@ -6,14 +6,14 @@
 
 | Item | State | Evidence |
 |---|---|---|
-| Backend tests | **89 passed** (was 17) | `cd backend && pytest -q` |
+| Backend tests | **103 passed** (was 17) | `cd backend && pytest -q` |
 | Frontend production build | **passes**, no mock imports | `cd frontend && npm run build` |
 | PayPal Sandbox OAuth | **verified live** | `GET /api/status?check_paypal=true` → `oauth.ok: true` |
 | Real Sandbox order creation | **verified live** | orders `45E59597XE7243603` (curl smoke test, later rejected) and `4JN22935LV1612144` (via UI) |
 | **Full live E2E (buyer approval + capture)** | **VERIFIED** | Order `05V70376MR1821151` → buyer approved in Sandbox Checkout → PACT verified `APPROVED` with PayPal → capture `9XY78096Y6982133J` **COMPLETED**, 99.99 USD; proposal `61332dde-2664-4da7-a7fb-d0265fde2314` is CAPTURED; repeat capture made no PayPal call |
 | Sandbox seller currency | **resolved** | The original Sandbox business account (India) refused USD ("This seller doesn't accept payments in your currency"). Replaced with a US business account + new app credentials in `backend/.env`. |
 | Capture refused before buyer approval | **verified live** | PayPal returned `PAYER_ACTION_REQUIRED`; API answered `409 ORDER_NOT_APPROVED` |
-| OpenAI path | **not verified live** | `OPENAI_API_KEY` is empty in local `.env`; recommendations use the labelled heuristic. Unit tests cover the OpenAI branch with a stubbed client. |
+| AI provider (Gemini default, OpenAI optional) | **not verified live** | No `GEMINI_API_KEY`/`OPENAI_API_KEY` in local `.env`; recommendations use the labelled heuristic. 14 Gemini tests run against a stubbed endpoint (success, invalid output, quota/403/404/500, timeout, safety block). |
 | Scenario A / B / C in UI | **verified** | screenshots in `docs/screenshots/` |
 | Route refresh, `/docs`, API 404s (single-process) | **verified** | `/`, `/assistant`, `/mandates`, `/audit`, `/docs` → 200 HTML; `/api/nope` → JSON 404 |
 | DB persistence with disk-path config | **verified** | data survived restart with `DATABASE_URL=sqlite:///<dir>/pact.db` |
@@ -63,8 +63,9 @@ Stop it before using port 8000 for the new build.
 
 ## Next steps (in order)
 
-1. Add `OPENAI_API_KEY` to `backend/.env`, restart, and run scenarios A–C to confirm the OpenAI path
-   (sidebar should read "OpenAI gpt-4o-mini"). Until then every recommendation is the labelled heuristic.
+1. Create a free Gemini key at https://aistudio.google.com/apikey, add `GEMINI_API_KEY=...` to `backend/.env`,
+   restart, and run scenarios A–C (sidebar should read "Google Gemini · gemini-2.5-flash").
+   Until then every recommendation is the labelled heuristic.
 2. Record the demo video (`docs/DEMO_SCRIPT.md`) and add the link to README and `docs/DEVPOST.md`.
 3. Optional: deploy to Render (paid Starter plan + disk), set `APP_BASE_URL`, verify `/api/status?check_paypal=true`.
    Build the Docker image once locally first (`docker build -t pact .`) with Docker Desktop running.

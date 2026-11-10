@@ -75,7 +75,7 @@ async def test_no_api_key_uses_labelled_heuristic(monkeypatch):
     rec = await agent_module.generate_shopping_recommendation("ergonomic mouse for CAD", None, _catalog())
     assert rec.provider == "heuristic"
     assert rec.model is None
-    assert "not configured" in rec.fallback_reason
+    assert "not set" in rec.fallback_reason
 
 
 @pytest.mark.asyncio

@@ -174,7 +174,9 @@ async def generate_proposal(request: ShoppingPromptRequest, db: Session = Depend
         },
     )
 
-    engine = f"OpenAI {rec.model}" if rec.provider == "openai" else "heuristic fallback (not AI)"
+    engine = {"openai": f"OpenAI {rec.model}", "gemini": f"Google Gemini {rec.model}"}.get(
+        rec.provider, "heuristic fallback (not AI)"
+    )
     message = (
         f"Recommended by {engine}. Policy engine PASSED all {len(policy.checks)} rules — awaiting your explicit approval."
         if policy.passed

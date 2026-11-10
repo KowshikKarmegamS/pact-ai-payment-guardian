@@ -23,13 +23,15 @@ services:
         value: https://api-m.sandbox.paypal.com
       - key: PAYPAL_CURRENCY
         value: USD
-      - key: OPENAI_MODEL
-        value: gpt-4o-mini
+      - key: AI_PROVIDER
+        value: auto
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: GEMINI_API_KEY
+        sync: false
       - key: PAYPAL_CLIENT_ID
         sync: false
       - key: PAYPAL_CLIENT_SECRET
-        sync: false
-      - key: OPENAI_API_KEY
         sync: false
       # Set to the service's public URL, e.g. https://pact-ai-payment-guardian.onrender.com
       - key: APP_BASE_URL

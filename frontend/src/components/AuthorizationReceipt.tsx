@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Check, CheckCircle2, Copy, Fingerprint, ShieldAlert, ShieldCheck, Sparkles, X } from 'lucide-react';
 import type { AuthorizationReceipt as Receipt, PolicyCheck } from '../types';
-import { aiLabel, dateTime, eventMeta, money, shortHash } from '../lib/format';
+import { aiLabel, isAIProvider, dateTime, eventMeta, money, shortHash } from '../lib/format';
 import { Badge, Mono, StatusBadge } from './ui';
 
 const Row: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
@@ -242,7 +242,7 @@ export const AuthorizationReceipt: React.FC<{ receipt: Receipt }> = ({ receipt }
         </Section>
       </div>
 
-      <Section title="Recommendation source" aside={<Badge tone={p.ai_provider === 'openai' ? 'indigo' : 'slate'}>{aiLabel(p.ai_provider, p.ai_model)}</Badge>}>
+      <Section title="Recommendation source" aside={<Badge tone={isAIProvider(p.ai_provider) ? 'indigo' : 'slate'}>{aiLabel(p.ai_provider, p.ai_model)}</Badge>}>
         {p.user_prompt && (
           <p className="text-sm text-slate-700">
             <span className="text-slate-500">Request: </span>“{p.user_prompt}”

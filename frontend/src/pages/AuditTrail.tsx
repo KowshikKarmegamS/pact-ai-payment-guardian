@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ChevronRight, Search } from 'lucide-react';
 import { pactApi } from '../api/pact';
 import type { AuditLogEntry } from '../types';
-import { dateTime, eventMeta, shortId } from '../lib/format';
+import { aiLabel, dateTime, eventMeta, shortId } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
 import { ProposalCase } from '../components/ProposalCase';
 import { Badge, Card, EmptyState, ErrorState, Modal, Mono, PageHeader, RefreshButton, Spinner } from '../components/ui';
@@ -40,7 +40,7 @@ function summary(e: AuditLogEntry): string {
   const parts: string[] = [];
   if (typeof d.product_name === 'string') parts.push(d.product_name);
   if (typeof d.name === 'string') parts.push(d.name);
-  if (typeof d.provider === 'string') parts.push(d.provider === 'openai' ? `OpenAI ${d.model ?? ''}`.trim() : `${d.provider} (not AI)`);
+  if (typeof d.provider === 'string') parts.push(d.provider === 'heuristic' ? 'heuristic (not AI)' : aiLabel(d.provider, typeof d.model === 'string' ? d.model : null));
   if (typeof d.paypal_order_id === 'string') parts.push(`order ${d.paypal_order_id}`);
   if (typeof d.paypal_capture_id === 'string') parts.push(`capture ${d.paypal_capture_id}`);
   if (Array.isArray(d.violations) && d.violations.length) parts.push(`${d.violations.length} violation(s)`);

@@ -15,7 +15,7 @@ Built for the PayPal AI Hackathon. MIT licensed.
 | Step | Who | What happens |
 |---|---|---|
 | 1. Mandate | User | Sets a budget, allowed merchants and categories, max unit price, max quantity, prohibited keywords and blocked merchants. |
-| 2. Recommend | AI (OpenAI, configurable model) | Picks **one product ID and a quantity** from the catalog. That is all it can do. |
+| 2. Recommend | AI (Google Gemini by default, or OpenAI) | Picks **one product ID and a quantity** from the catalog. That is all it can do. |
 | 3. Authorize | Deterministic policy engine | Prices the item from the catalog (Decimal), evaluates 8–12 rules, persists each result. Blocked proposals stop here. |
 | 4. Approve | Human | Approves the exact proposal. The approval is bound to a SHA-256 fingerprint of the purchase and the mandate rules. |
 | 5. Checkout | PayPal Orders v2 | Server re-checks the fingerprint and policy, creates an order for exactly that amount, and the buyer approves in PayPal Checkout. |
@@ -29,11 +29,11 @@ Every step is written to an append-only, redacted audit log, and every proposal 
 - **Approval is bound to the purchase, not to a button click.** If the price, quantity, merchant, mandate budget, allowlists or any restriction change after approval, the fingerprint no longer matches and the approval is void. Editing or pausing a mandate invalidates in-flight approvals immediately.
 - **Captured means captured.** PACT will not mark a proposal `CAPTURED` unless PayPal returns a real capture ID with status `COMPLETED` for the approved amount and currency. `PENDING`, `DECLINED`, missing IDs and mismatched amounts are surfaced as such.
 - **Explainable decisions.** The Authorization Receipt shows each rule, pass/fail, budget at decision time, fingerprint, PayPal IDs and the full lifecycle timeline, all from persisted server data.
-- **Honest about the AI.** The UI states whether a recommendation came from OpenAI (with the model name) or from the keyword heuristic fallback, and why the fallback was used.
+- **Honest about the AI.** The UI states whether a recommendation came from Gemini or OpenAI (with the model name) or from the keyword heuristic fallback, and why the fallback was used.
 
 ## Screenshots
 
-Real screens from the running app (PayPal Sandbox, heuristic recommender because no OpenAI key was configured at capture time).
+Real screens from the running app (PayPal Sandbox, heuristic recommender because no AI key was configured at capture time).
 
 | Scenario A: verified PayPal capture | Overview from live data |
 |---|---|
@@ -55,7 +55,7 @@ A real run of scenario A, start to finish:
 
 | Step | Result |
 |---|---|
-| Recommendation | Logitech MX Master 3S Advanced Wireless Mouse, TechHub, $99.99 (heuristic recommender: no OpenAI key configured) |
+| Recommendation | Logitech MX Master 3S Advanced Wireless Mouse, TechHub, $99.99 (heuristic recommender: no AI key configured at the time) |
 | Policy | 11 / 11 rules passed |
 | Human approval | bound to fingerprint `b44a6c40…ed0b818` |
 | PayPal order | `05V70376MR1821151` created (`PAYER_ACTION_REQUIRED`) |
@@ -73,7 +73,7 @@ A real run of scenario A, start to finish:
    │  never authorizes; only displays server state and sends explicit user actions
    ▼
  FastAPI  /api/*   (also serves the built frontend and /docs in production)
-   ├── agent.py        OpenAI chat completion (JSON mode) → strict pydantic validation
+   ├── agent.py        Gemini generateContent or OpenAI chat (JSON output) → strict pydantic validation
    │                   → catalog lookup. Falls back to a labelled keyword heuristic.
    ├── policy.py       Pure, deterministic PolicyEngine. No DB, no network, no AI input.
    ├── services/
@@ -127,11 +127,12 @@ A real run of scenario A, start to finish:
 
 ## AI integration
 
-- Provider: OpenAI Chat Completions, JSON mode, `temperature=0.1`, 20 s timeout, one retry.
-- Model: `OPENAI_MODEL` (default `gpt-4o-mini`).
+- Provider: `AI_PROVIDER` = `auto` (default), `gemini` or `openai`. `auto` uses Gemini when `GEMINI_API_KEY` is set, otherwise OpenAI when `OPENAI_API_KEY` is set.
+- **Google Gemini Developer API** (default; has a free tier): REST `models/{GEMINI_MODEL}:generateContent` with `responseMimeType: application/json`, `temperature=0.1`, 20 s timeout. Default model `gemini-2.5-flash` (thinking disabled to save quota). The key is sent in the `x-goog-api-key` header, never in the URL. Get a key at https://aistudio.google.com/apikey.
+- **OpenAI** (optional): Chat Completions, JSON mode, model `OPENAI_MODEL` (default `gpt-4o-mini`).
 - The system prompt tells the model that user text and product descriptions are untrusted data, and that it cannot approve or pay.
 - Output is validated with pydantic (`StrictInt` product ID, quantity 1–20, non-empty reasoning) and the product ID must exist in the catalog.
-- If `OPENAI_API_KEY` is unset, the call fails, or validation fails, PACT uses a deterministic keyword heuristic and records the reason. The UI labels it **"Heuristic fallback (not AI)"**.
+- If no key is set, the call fails (timeout, quota/rate limit, rejected key, safety block), or validation fails, PACT uses a deterministic keyword heuristic and records the reason. The UI labels it **"Heuristic fallback (not AI)"**.
 - `GET /api/status` reports which mode is active, without exposing keys.
 
 ## PayPal tools used
@@ -162,8 +163,10 @@ cp .env.example .env           # then edit .env
 
 ```dotenv
 DATABASE_URL=sqlite:///./pact.db
-OPENAI_API_KEY=                     # optional; empty = labelled heuristic fallback
-OPENAI_MODEL=gpt-4o-mini
+AI_PROVIDER=auto                    # gemini | openai | auto
+GEMINI_API_KEY=                     # free tier key from aistudio.google.com; empty = labelled heuristic
+GEMINI_MODEL=gemini-2.5-flash
+OPENAI_API_KEY=                     # optional alternative (paid)
 PAYPAL_CLIENT_ID=<sandbox client id>
 PAYPAL_CLIENT_SECRET=<sandbox secret>
 PAYPAL_BASE_URL=https://api-m.sandbox.paypal.com
@@ -238,14 +241,14 @@ cd backend && pytest -v
 cd frontend && npm ci && npm run build
 ```
 
-89 backend tests cover the policy engine as pure unit tests (every rule, quantity boundaries, Decimal precision, currency), AI output validation (malformed JSON, wrong types, unknown product IDs, out-of-range quantities, injected fields, fallback reasons), a fully prompt-injected AI being blocked, the full payment lifecycle against an in-memory PayPal fake (capture before buyer approval, order amount/currency/reference mismatches, missing capture ID, PENDING and DECLINED captures, amount mismatch, timeouts with idempotent retry and reconciliation, concurrent capture lock, duplicate capture), approval invalidation (mandate edits, pausing, catalog price drift, tampered rows), cancellation and reopen, audit redaction, and Sandbox-only enforcement. Tests never touch `pact.db`, OpenAI or PayPal.
+103 backend tests cover the policy engine as pure unit tests (every rule, quantity boundaries, Decimal precision, currency), AI output validation for both providers, Gemini HTTP errors/quota/timeouts/safety blocks against a stubbed endpoint (malformed JSON, wrong types, unknown product IDs, out-of-range quantities, injected fields, fallback reasons), a fully prompt-injected AI being blocked, the full payment lifecycle against an in-memory PayPal fake (capture before buyer approval, order amount/currency/reference mismatches, missing capture ID, PENDING and DECLINED captures, amount mismatch, timeouts with idempotent retry and reconciliation, concurrent capture lock, duplicate capture), approval invalidation (mandate edits, pausing, catalog price drift, tampered rows), cancellation and reopen, audit redaction, and Sandbox-only enforcement. Tests never touch `pact.db`, Gemini, OpenAI or PayPal.
 
 ## Deployment (Render)
 
 `render.yaml` + `Dockerfile` define one web service: the image builds the React app and serves it from FastAPI. SQLite is stored on a **Render persistent disk** at `/var/data` (`DATABASE_URL=sqlite:////var/data/pact.db`). Persistent disks require a paid instance (Starter or above); on the free plan the filesystem is wiped on every deploy, so do not use it for this app.
 
 1. Push the repository, then in Render choose **New → Blueprint** and select it.
-2. Enter `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, optional `OPENAI_API_KEY`, and set `APP_BASE_URL` and `CORS_ORIGINS` to the service URL (e.g. `https://pact-ai-payment-guardian.onrender.com`).
+2. Enter `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, optional `GEMINI_API_KEY`, and set `APP_BASE_URL` and `CORS_ORIGINS` to the service URL (e.g. `https://pact-ai-payment-guardian.onrender.com`).
 3. Deploy, then open `/api/status?check_paypal=true`.
 
 No hosted instance has been verified yet; the tested path is the local setup above.
@@ -257,7 +260,7 @@ No hosted instance has been verified yet; the tested path is the local setup abo
 - The catalog is seeded demo data, not a live merchant feed.
 - Orders use `PAYPAL_CURRENCY` only; there is no multi-currency support by design.
 - The fingerprint proves the approved values did not change inside PACT; it is not a signature by the user's device.
-- When no `OPENAI_API_KEY` is configured, recommendations come from the keyword heuristic and are labelled as such.
+- When no AI key is configured, recommendations come from the keyword heuristic and are labelled as such.
 
 ## Repository layout
 

@@ -28,7 +28,7 @@ PayPal is the execution layer and the source of truth for money movement. PACT u
 
 ## Why AI is useful here
 
-Turning "I need an ergonomic mouse for CAD" into the right catalog item is a language problem and a good fit for an LLM (OpenAI, configurable model). PACT keeps that benefit while treating the model as untrusted: it never sets prices, merchants, budgets or outcomes. When no API key is configured, or the model fails or returns invalid output, PACT falls back to a keyword matcher and labels it as not AI.
+Turning "I need an ergonomic mouse for CAD" into the right catalog item is a language problem and a good fit for an LLM (Google Gemini via the Gemini Developer API, with OpenAI as an optional alternative). PACT keeps that benefit while treating the model as untrusted: it never sets prices, merchants, budgets or outcomes. When no API key is configured, or the model fails or returns invalid output, PACT falls back to a keyword matcher and labels it as not AI.
 
 ## Why deterministic authorization matters
 
@@ -36,7 +36,7 @@ The demo includes a product listing whose description instructs AI agents that i
 
 ## How we built it
 
-FastAPI, SQLAlchemy 2, SQLite, Pydantic, httpx and the OpenAI SDK on the backend; React, Vite, TypeScript, Tailwind and Lucide on the frontend. The policy engine is a pure module with no database or network access. Money is `Decimal` throughout. Capture safety combines an atomic database lock, a stable PayPal-Request-Id, and reconciliation through order lookup after timeouts. 89 automated backend tests run against an in-memory PayPal fake, so the suite can never charge anyone.
+FastAPI, SQLAlchemy 2, SQLite, Pydantic, httpx (Gemini REST API) and the OpenAI SDK on the backend; React, Vite, TypeScript, Tailwind and Lucide on the frontend. The policy engine is a pure module with no database or network access. Money is `Decimal` throughout. Capture safety combines an atomic database lock, a stable PayPal-Request-Id, and reconciliation through order lookup after timeouts. 89 automated backend tests run against an in-memory PayPal fake, so the suite can never charge anyone.
 
 ## Challenges
 
@@ -55,4 +55,4 @@ Per-user authentication and mandates, Postgres for multi-instance deployments, m
 
 ## Built with
 
-python, fastapi, sqlalchemy, sqlite, pydantic, openai, paypal-orders-v2, paypal-checkout, react, typescript, vite, tailwindcss
+python, fastapi, sqlalchemy, sqlite, pydantic, google-gemini, openai, paypal-orders-v2, paypal-checkout, react, typescript, vite, tailwindcss

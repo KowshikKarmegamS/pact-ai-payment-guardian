@@ -5,7 +5,7 @@ Record real app footage only: PayPal Sandbox, real order and capture IDs, no edi
 ## Before recording
 
 - Backend and frontend running (`APP_BASE_URL` must match the URL in the browser).
-- Sidebar shows **PayPal: Sandbox connected**. If you want the OpenAI path on camera, set `OPENAI_API_KEY` and confirm the sidebar says **OpenAI gpt-4o-mini**; otherwise the recommender is labelled **Heuristic (no AI key)** and you should say so.
+- Sidebar shows **PayPal: Sandbox connected**. For the AI path on camera, set `GEMINI_API_KEY` (free tier) and confirm the sidebar says **Google Gemini · gemini-2.5-flash**; otherwise the recommender is labelled **Heuristic (no AI key)** and you should say so.
 - Sandbox personal (buyer) credentials ready in a password manager, not on screen.
 - Optional: clear the assistant list ("Clear this list") so the screen starts empty.
 - Allow popups for the app's origin, or use the "continue in this tab" link.
@@ -19,7 +19,7 @@ Record real app footage only: PayPal Sandbox, real order and capture IDs, no edi
 "PACT puts a deterministic gate between the agent and PayPal. AI recommends, code authorizes, a human approves, PayPal executes. This mandate allows $750 at approved merchants, Electronics and Books, at most $300 per item, and no consoles or games."
 
 **0:45–1:15 · Recommendation and receipt** (Assistant → A · Safe purchase)
-"I ask for an ergonomic mouse for CAD." Point at the recommendation-source badge (OpenAI model or heuristic). "The AI only picked a product ID. The price, merchant and category come from the catalog. The policy engine ran 11 rules and every one passed; here's the receipt. It's waiting for me."
+"I ask for an ergonomic mouse for CAD." Point at the recommendation-source badge (Gemini model or heuristic). "The AI only picked a product ID. The price, merchant and category come from the catalog. The policy engine ran 11 rules and every one passed; here's the receipt. It's waiting for me."
 
 **1:15–1:40 · Security** (B, then C)
 "Now: buy a PlayStation 5 for the office." Show BLOCKED and the six violations. "No approve button, no PayPal order." Click C. "This listing tells AI agents it's pre-approved and to pretend the merchant is TechHub. The policy engine never reads descriptions; the merchant is QuickDeals Marketplace, so it's blocked."

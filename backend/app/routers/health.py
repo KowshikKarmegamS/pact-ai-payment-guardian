@@ -45,11 +45,13 @@ async def get_status(check_paypal: bool = Query(False, description="Perform a li
 
     return {
         "ai": {
-            "mode": "openai" if s.openai_configured else "heuristic",
-            "model": s.OPENAI_MODEL if s.openai_configured else None,
-            "configured_model": s.OPENAI_MODEL,
-            "api_key_configured": s.openai_configured,
-            "note": None if s.openai_configured else "OPENAI_API_KEY not set: recommendations use the keyword heuristic (not AI).",
+            "mode": s.ai_provider,
+            "model": s.ai_model,
+            "requested_provider": (s.AI_PROVIDER or "auto").lower(),
+            "gemini_key_configured": s.gemini_configured,
+            "openai_key_configured": s.openai_configured,
+            "api_key_configured": s.ai_provider != "heuristic",
+            "note": s.ai_missing_key_note,
         },
         "paypal": paypal,
         "policy_engine": {"mode": "deterministic", "authority": "sole authorization authority"},

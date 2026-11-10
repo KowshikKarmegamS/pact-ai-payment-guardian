@@ -34,7 +34,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         db.close()
     logger.info(
         "PACT started: AI=%s, PayPal=%s (%s), currency=%s, app_base_url=%s",
-        f"openai:{settings.OPENAI_MODEL}" if settings.openai_configured else "heuristic-fallback",
+        f"{settings.ai_provider}:{settings.ai_model}" if settings.ai_model else "heuristic-fallback",
         "sandbox" if settings.paypal_is_sandbox else "INVALID",
         "credentials set" if settings.paypal_credentials_configured else "credentials missing",
         settings.currency,

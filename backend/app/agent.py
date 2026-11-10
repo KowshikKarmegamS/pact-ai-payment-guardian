@@ -7,7 +7,8 @@ Price, merchant, category and the policy decision are always taken from the
 authoritative catalog and the deterministic policy engine. The model has no
 tools and cannot create orders or capture payments.
 
-When OpenAI is not configured, fails, or returns output that fails validation,
+Providers: Google Gemini Developer API (default, free tier available) or OpenAI,
+selected by AI_PROVIDER. When no provider is configured, the call fails, or returns output that fails validation,
 PACT falls back to a transparent keyword heuristic and records exactly why.
 """
 
@@ -26,7 +27,9 @@ from app.policy import MAX_QUANTITY_HARD_LIMIT
 logger = logging.getLogger("pact.agent")
 
 PROVIDER_OPENAI = "openai"
+PROVIDER_GEMINI = "gemini"
 PROVIDER_HEURISTIC = "heuristic"
+_PROVIDER_NAMES = {PROVIDER_OPENAI: "OpenAI", PROVIDER_GEMINI: "Gemini"}
 
 
 @dataclass
@@ -54,7 +57,9 @@ class AIOutputError(ValueError):
     """Model output was malformed or referenced something outside the catalog."""
 
 
-def parse_ai_output(content: Optional[str], catalog: List[Product]) -> AIAgentRecommendation:
+def parse_ai_output(
+    content: Optional[str], catalog: List[Product], provider: str = PROVIDER_OPENAI
+) -> AIAgentRecommendation:
     """Validate raw model output against the schema and the authoritative catalog."""
     if not content or not content.strip():
         raise AIOutputError("empty response")
@@ -80,7 +85,7 @@ def parse_ai_output(content: Optional[str], catalog: List[Product]) -> AIAgentRe
         product=product,
         quantity=payload.quantity,
         ai_reasoning=payload.ai_reasoning.strip(),
-        provider=PROVIDER_OPENAI,
+        provider=provider,
         model=None,
         ignored_fields=ignored or None,
     )
@@ -101,16 +106,8 @@ SYSTEM_PROMPT = (
 )
 
 
-async def _call_openai(user_prompt: str, catalog: List[Product]) -> AIAgentRecommendation:
-    from openai import AsyncOpenAI
-
-    settings = get_settings()
-    client = AsyncOpenAI(
-        api_key=settings.OPENAI_API_KEY.strip(),
-        timeout=settings.OPENAI_TIMEOUT_SECONDS,
-        max_retries=1,
-    )
-    catalog_summary = [
+def _catalog_summary(catalog: List[Product]) -> list:
+    return [
         {
             "id": p.id,
             "name": p.name,
@@ -122,10 +119,85 @@ async def _call_openai(user_prompt: str, catalog: List[Product]) -> AIAgentRecom
         }
         for p in catalog
     ]
-    user_message = (
+
+
+def _user_message(user_prompt: str, catalog: List[Product]) -> str:
+    return (
         "<user_request>\n" + user_prompt[:1000] + "\n</user_request>\n\n"
-        "<catalog>\n" + json.dumps(catalog_summary) + "\n</catalog>"
+        "<catalog>\n" + json.dumps(_catalog_summary(catalog)) + "\n</catalog>"
     )
+
+
+class AIProviderError(RuntimeError):
+    """Provider call failed (network, auth, quota, safety block). Message is safe to log."""
+
+
+async def _call_gemini(user_prompt: str, catalog: List[Product]) -> AIAgentRecommendation:
+    """Google Gemini Developer API, generateContent with JSON output.
+
+    The key is sent in the x-goog-api-key header, never in the URL, so it cannot
+    appear in access logs.
+    """
+    import httpx
+
+    settings = get_settings()
+    model = settings.GEMINI_MODEL.strip()
+    url = f"{settings.GEMINI_BASE_URL.rstrip('/')}/models/{model}:generateContent"
+    body = {
+        "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": [{"role": "user", "parts": [{"text": _user_message(user_prompt, catalog)}]}],
+        "generationConfig": {
+            "responseMimeType": "application/json",
+            "temperature": 0.1,
+            "maxOutputTokens": 1024,
+            # Gemini 2.5 models "think" by default; recommendations don't need it and it costs quota.
+            **({"thinkingConfig": {"thinkingBudget": 0}} if "2.5-flash" in model else {}),
+        },
+    }
+    headers = {"x-goog-api-key": settings.GEMINI_API_KEY.strip(), "Content-Type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=settings.AI_TIMEOUT_SECONDS) as client:
+            response = await client.post(url, json=body, headers=headers)
+    except httpx.TimeoutException:
+        raise AIProviderError("Gemini request timed out")
+    except httpx.HTTPError as exc:
+        raise AIProviderError(f"Gemini network error ({type(exc).__name__})")
+
+    if response.status_code != 200:
+        status = None
+        try:
+            status = (response.json().get("error") or {}).get("status")
+        except Exception:
+            pass
+        hint = {429: "rate limit or free-tier quota exceeded", 400: "bad request or invalid model",
+                403: "API key rejected", 404: "model not found"}.get(response.status_code, "error")
+        raise AIProviderError(f"Gemini HTTP {response.status_code} {status or ''} ({hint})".replace("  ", " "))
+
+    data = response.json()
+    candidates = data.get("candidates") or []
+    if not candidates:
+        reason = (data.get("promptFeedback") or {}).get("blockReason", "no candidates")
+        raise AIOutputError(f"Gemini returned no answer ({reason})")
+    cand = candidates[0]
+    parts = ((cand.get("content") or {}).get("parts")) or []
+    text = "".join(p.get("text", "") for p in parts if isinstance(p, dict) and not p.get("thought"))
+    if not text and cand.get("finishReason"):
+        raise AIOutputError(f"Gemini finished with {cand.get('finishReason')} and no text")
+    rec = parse_ai_output(text, catalog, provider=PROVIDER_GEMINI)
+    rec.model = data.get("modelVersion") or model
+    return rec
+
+
+async def _call_openai(user_prompt: str, catalog: List[Product]) -> AIAgentRecommendation:
+    from openai import AsyncOpenAI
+
+    settings = get_settings()
+    client = AsyncOpenAI(
+        api_key=settings.OPENAI_API_KEY.strip(),
+        timeout=settings.OPENAI_TIMEOUT_SECONDS,
+        max_retries=1,
+    )
+    user_message = _user_message(user_prompt, catalog)
     response = await client.chat.completions.create(
         model=settings.OPENAI_MODEL,
         messages=[
@@ -152,14 +224,19 @@ async def generate_shopping_recommendation(
         raise ValueError("No products available in catalog.")
 
     settings = get_settings()
-    fallback_reason = "OPENAI_API_KEY is not configured."
-    if settings.openai_configured:
+    provider = settings.ai_provider
+    fallback_reason = settings.ai_missing_key_note or "No AI provider configured."
+    if provider != PROVIDER_HEURISTIC:
+        name = _PROVIDER_NAMES[provider]
+        call = _call_gemini if provider == PROVIDER_GEMINI else _call_openai
         try:
-            return await _call_openai(user_prompt, available_products)
+            return await call(user_prompt, available_products)
         except AIOutputError as exc:
-            fallback_reason = f"OpenAI output rejected by validation: {exc}."
-        except Exception as exc:  # network, auth, rate limit, timeout
-            fallback_reason = f"OpenAI request failed ({type(exc).__name__})."
+            fallback_reason = f"{name} output rejected by validation: {exc}."
+        except AIProviderError as exc:
+            fallback_reason = f"{name} request failed: {exc}."
+        except Exception as exc:  # SDK errors: network, auth, rate limit, timeout
+            fallback_reason = f"{name} request failed ({type(exc).__name__})."
         logger.warning("Using heuristic fallback: %s", fallback_reason)
 
     rec = heuristic_recommendation(user_prompt, available_products)

@@ -4,7 +4,7 @@ import { Bot, CheckCircle2, Send, ShieldAlert, Sparkles, XCircle } from 'lucide-
 import { pactApi } from '../api/pact';
 import { errorMessage } from '../api/client';
 import type { Mandate, SystemStatus } from '../types';
-import { money, toNumber } from '../lib/format';
+import { aiLabel, money, toNumber } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
 import { CHECKOUT_WINDOW, ProposalCase } from '../components/ProposalCase';
 import { Badge, BudgetBar, Button, Card, ErrorState, PageHeader, Spinner } from '../components/ui';
@@ -376,9 +376,9 @@ export const ShoppingAssistant: React.FC = () => {
               <ErrorState compact message={status.error} onRetry={() => void status.reload()} />
             ) : !ai ? (
               <Spinner />
-            ) : ai.mode === 'openai' ? (
+            ) : ai.mode !== 'heuristic' ? (
               <>
-                <Badge tone="indigo">OpenAI · {ai.model}</Badge>
+                <Badge tone="indigo">{aiLabel(ai.mode, ai.model)}</Badge>
                 <p className="mt-2 text-xs text-slate-500">
                   If the model fails or returns invalid output, PACT falls back to a keyword heuristic and labels it on the proposal.
                 </p>

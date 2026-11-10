@@ -180,9 +180,11 @@ export interface AuthorizationReceipt {
 
 export interface SystemStatus {
   ai: {
-    mode: 'openai' | 'heuristic';
+    mode: 'gemini' | 'openai' | 'heuristic';
     model: string | null;
-    configured_model: string;
+    requested_provider: string;
+    gemini_key_configured: boolean;
+    openai_key_configured: boolean;
     api_key_configured: boolean;
     note: string | null;
   };

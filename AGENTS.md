@@ -10,7 +10,7 @@ It demonstrates the principle: **AI recommends → Deterministic code authorizes
 ```
 Frontend (React/Vite/TypeScript)
   └─► FastAPI Backend
-        ├─► AI Shopping Assistant (OpenAI API)
+        ├─► AI Shopping Assistant (Google Gemini API or OpenAI API)
         ├─► Product Catalog (SQLite)
         ├─► Deterministic Policy Engine
         ├─► Approval Workflow
@@ -25,7 +25,7 @@ Frontend (React/Vite/TypeScript)
 | Backend  | Python, FastAPI, Pydantic, SQLAlchemy   |
 | Database | SQLite                                  |
 | Frontend | React, Vite, TypeScript, Tailwind CSS   |
-| AI       | OpenAI API (configurable model)         |
+| AI       | Google Gemini Developer API (default) or OpenAI |
 | Payment  | PayPal REST API v2 (Sandbox)            |
 | Icons    | Lucide React                            |
 
@@ -41,7 +41,7 @@ pact-ai-payment-guardian/
 │   │   ├── database.py       # Database engine & session
 │   │   ├── schemas.py        # Pydantic request/response schemas
 │   │   ├── catalog.py        # Product catalog seeding
-│   │   ├── agent.py          # AI shopping assistant (OpenAI)
+│   │   ├── agent.py          # AI shopping assistant (Gemini / OpenAI)
 │   │   ├── policy.py         # Deterministic policy engine (pure)
 │   │   ├── money.py          # Decimal helpers
 │   │   ├── paypal.py         # PayPal API integration (Sandbox only)
@@ -131,8 +131,9 @@ Rules for changes:
 ## Environment Variables
 
 See `backend/.env.example` for all required configuration. Key variables:
-- `OPENAI_API_KEY` — OpenAI API key
-- `OPENAI_MODEL` — Model name (default: gpt-4o-mini)
+- `AI_PROVIDER` — `auto` (default), `gemini` or `openai`
+- `GEMINI_API_KEY` / `GEMINI_MODEL` — Google Gemini Developer API (default model gemini-2.5-flash)
+- `OPENAI_API_KEY` / `OPENAI_MODEL` — optional OpenAI alternative (default gpt-4o-mini)
 - `PAYPAL_CLIENT_ID` — PayPal Sandbox client ID
 - `PAYPAL_CLIENT_SECRET` — PayPal Sandbox secret
 - `PAYPAL_BASE_URL` — PayPal API base URL (sandbox)
@@ -141,7 +142,7 @@ See `backend/.env.example` for all required configuration. Key variables:
 ## Testing
 
 - Policy engine tests must be pure unit tests (no database, no network)
-- Tests must never reach PayPal or OpenAI: use the `fake_paypal` fixture; `conftest.py` pins env vars
+- Tests must never reach PayPal, Gemini or OpenAI: use the `fake_paypal` fixture; `conftest.py` pins env vars
   and blocks real PayPal HTTP for every test
 - Use pytest fixtures for test data
 - Test both passing and failing policy evaluations
@@ -149,7 +150,8 @@ See `backend/.env.example` for all required configuration. Key variables:
 
 ## AI Model Configuration
 
-- Provider: OpenAI (configurable via env)
-- Model: Configurable via `OPENAI_MODEL` env var
+- Provider: Google Gemini (default) or OpenAI, selected by `AI_PROVIDER`
+- Model: `GEMINI_MODEL` / `OPENAI_MODEL`
+- API keys go in request headers, never in URLs or logs
 - The AI is used for product recommendation, NOT for payment decisions
 - AI responses must be validated by the policy engine before any action

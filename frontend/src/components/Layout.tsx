@@ -4,6 +4,7 @@ import { Bot, CreditCard, ExternalLink, History, LayoutDashboard, Menu, ScrollTe
 import { pactApi } from '../api/pact';
 import { useAsync } from '../lib/useAsync';
 import type { SystemStatus } from '../types';
+import { aiLabel } from '../lib/format';
 
 const NAV = [
   { to: '/', label: 'Overview', icon: LayoutDashboard },
@@ -39,8 +40,8 @@ const SystemPanel: React.FC<{ status: SystemStatus | null; error: string | null 
       <div className="flex items-center justify-between gap-2">
         <span className="font-semibold text-slate-300">Recommender</span>
         <span className="flex items-center gap-1.5 text-slate-400">
-          <Dot ok={status ? status.ai.mode === 'openai' : null} />
-          {!status ? '…' : status.ai.mode === 'openai' ? `OpenAI ${status.ai.model}` : 'Heuristic (no AI key)'}
+          <Dot ok={status ? status.ai.mode !== 'heuristic' : null} />
+          {!status ? '…' : status.ai.mode === 'heuristic' ? 'Heuristic (no AI key)' : aiLabel(status.ai.mode, status.ai.model)}
         </span>
       </div>
       <div className="flex items-center justify-between gap-2">
