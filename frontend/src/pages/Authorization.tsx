@@ -245,6 +245,7 @@ export const Authorization: React.FC = () => {
   const hasOrder = !!p.paypal_order_id;
   const buyerOk = ['PAYPAL_BUYER_APPROVED', 'CAPTURE_PENDING', 'CAPTURED'].includes(p.status);
   const showJourney = !!p.approved_at && !blocked;
+  const approvalValid = receipt.integrity.intact && p.status !== 'APPROVAL_EXPIRED';
   const canReject = ['AWAITING_HUMAN_APPROVAL', 'HUMAN_APPROVED', 'AWAITING_PAYPAL_BUYER_APPROVAL', 'PAYPAL_BUYER_APPROVED', 'PAYPAL_CANCELLED'].includes(p.status);
 
   const approve = () =>
@@ -445,7 +446,7 @@ export const Authorization: React.FC = () => {
                     <p className="mt-0.5">
                       SHA-256 of the product, merchant, price, quantity, currency and mandate rules.{' '}
                       {p.approved_at ? (
-                        <>Approved {dateTime(p.approved_at)}. <span className={receipt.integrity.intact ? 'text-ok' : 'text-caution'}>{receipt.integrity.intact ? 'Still intact.' : 'No longer matches.'}</span></>
+                        <>Approved {dateTime(p.approved_at)}. <span className={approvalValid ? 'text-ok' : 'text-caution'}>{approvalValid ? 'Still intact.' : 'Void: it no longer matches.'}</span></>
                       ) : (
                         'Your approval is bound to it; if anything changes, it is void.'
                       )}

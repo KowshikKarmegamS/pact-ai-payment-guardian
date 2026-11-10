@@ -44,7 +44,7 @@
       "caption": "Back in PACT, the server asks PayPal directly|whether the buyer approved.|Only then can the payment be captured." },
 
     { "id": "11-captured", "take": "app2", "from": "captured", "to": "captured_end", "fromOffset": 0.0, "toOffset": 0.0,
-      "zoom": [540, 28, 1300, 731],
+      "zoom": [416, 28, 1344, 756],
       "say": "Captured. A real PayPal capture I D, status completed, for exactly eighty-nine dollars.",
       "caption": "Captured.|A real PayPal capture ID, status COMPLETED,|for exactly $89." },
 
