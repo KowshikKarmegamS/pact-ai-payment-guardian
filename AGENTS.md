@@ -132,7 +132,7 @@ Rules for changes:
 
 See `backend/.env.example` for all required configuration. Key variables:
 - `AI_PROVIDER` — `auto` (default), `gemini` or `openai`
-- `GEMINI_API_KEY` / `GEMINI_MODEL` — Google Gemini Developer API (default model gemini-2.5-flash)
+- `GEMINI_API_KEY` / `GEMINI_MODEL` — Google Gemini Developer API (default model gemini-3.5-flash)
 - `OPENAI_API_KEY` / `OPENAI_MODEL` — optional OpenAI alternative (default gpt-4o-mini)
 - `PAYPAL_CLIENT_ID` — PayPal Sandbox client ID
 - `PAYPAL_CLIENT_SECRET` — PayPal Sandbox secret

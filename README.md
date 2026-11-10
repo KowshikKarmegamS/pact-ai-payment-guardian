@@ -56,6 +56,7 @@ A real run of scenario A, start to finish:
 | Step | Result |
 |---|---|
 | Recommendation | Logitech MX Master 3S Advanced Wireless Mouse, TechHub, $99.99 (heuristic recommender: no AI key configured at the time) |
+| Same scenarios on Gemini (later run) | A → same mouse, 11/11 rules pass; B → PS5 blocked by 6 rules; C → Gemini chose the injected marketplace listing and the policy engine blocked it. 3–5 s per recommendation on `gemini-3.5-flash`. |
 | Policy | 11 / 11 rules passed |
 | Human approval | bound to fingerprint `b44a6c40…ed0b818` |
 | PayPal order | `05V70376MR1821151` created (`PAYER_ACTION_REQUIRED`) |
@@ -128,7 +129,7 @@ A real run of scenario A, start to finish:
 ## AI integration
 
 - Provider: `AI_PROVIDER` = `auto` (default), `gemini` or `openai`. `auto` uses Gemini when `GEMINI_API_KEY` is set, otherwise OpenAI when `OPENAI_API_KEY` is set.
-- **Google Gemini Developer API** (default; has a free tier): REST `models/{GEMINI_MODEL}:generateContent` with `responseMimeType: application/json`, `temperature=0.1`, 20 s timeout. Default model `gemini-2.5-flash` (thinking disabled to save quota). The key is sent in the `x-goog-api-key` header, never in the URL. Get a key at https://aistudio.google.com/apikey.
+- **Google Gemini Developer API** (default; has a free tier): REST `models/{GEMINI_MODEL}:generateContent` with `responseMimeType: application/json`, `temperature=0.1`, 20 s timeout. Default model `gemini-3.5-flash` with `GEMINI_THINKING_LEVEL=minimal` (about 5 s per recommendation; `gemini-3.5-flash` is no longer available to new API keys). The key is sent in the `x-goog-api-key` header, never in the URL. Get a key at https://aistudio.google.com/apikey.
 - **OpenAI** (optional): Chat Completions, JSON mode, model `OPENAI_MODEL` (default `gpt-4o-mini`).
 - The system prompt tells the model that user text and product descriptions are untrusted data, and that it cannot approve or pay.
 - Output is validated with pydantic (`StrictInt` product ID, quantity 1–20, non-empty reasoning) and the product ID must exist in the catalog.
@@ -165,7 +166,7 @@ cp .env.example .env           # then edit .env
 DATABASE_URL=sqlite:///./pact.db
 AI_PROVIDER=auto                    # gemini | openai | auto
 GEMINI_API_KEY=                     # free tier key from aistudio.google.com; empty = labelled heuristic
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.5-flash
 OPENAI_API_KEY=                     # optional alternative (paid)
 PAYPAL_CLIENT_ID=<sandbox client id>
 PAYPAL_CLIENT_SECRET=<sandbox secret>
@@ -241,7 +242,7 @@ cd backend && pytest -v
 cd frontend && npm ci && npm run build
 ```
 
-103 backend tests cover the policy engine as pure unit tests (every rule, quantity boundaries, Decimal precision, currency), AI output validation for both providers, Gemini HTTP errors/quota/timeouts/safety blocks against a stubbed endpoint (malformed JSON, wrong types, unknown product IDs, out-of-range quantities, injected fields, fallback reasons), a fully prompt-injected AI being blocked, the full payment lifecycle against an in-memory PayPal fake (capture before buyer approval, order amount/currency/reference mismatches, missing capture ID, PENDING and DECLINED captures, amount mismatch, timeouts with idempotent retry and reconciliation, concurrent capture lock, duplicate capture), approval invalidation (mandate edits, pausing, catalog price drift, tampered rows), cancellation and reopen, audit redaction, and Sandbox-only enforcement. Tests never touch `pact.db`, Gemini, OpenAI or PayPal.
+108 backend tests cover the policy engine as pure unit tests (every rule, quantity boundaries, Decimal precision, currency), AI output validation for both providers, Gemini HTTP errors/quota/timeouts/safety blocks against a stubbed endpoint (malformed JSON, wrong types, unknown product IDs, out-of-range quantities, injected fields, fallback reasons), a fully prompt-injected AI being blocked, the full payment lifecycle against an in-memory PayPal fake (capture before buyer approval, order amount/currency/reference mismatches, missing capture ID, PENDING and DECLINED captures, amount mismatch, timeouts with idempotent retry and reconciliation, concurrent capture lock, duplicate capture), approval invalidation (mandate edits, pausing, catalog price drift, tampered rows), cancellation and reopen, audit redaction, and Sandbox-only enforcement. Tests never touch `pact.db`, Gemini, OpenAI or PayPal.
 
 ## Deployment (Render)
 

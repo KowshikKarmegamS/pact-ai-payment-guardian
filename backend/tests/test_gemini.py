@@ -52,6 +52,38 @@ def gemini(monkeypatch):
     return state
 
 
+@pytest.mark.parametrize("model,level,expected", [
+    ("gemini-3.5-flash", "minimal", {"thinkingLevel": "minimal"}),
+    ("gemini-3.5-flash", "", None),
+    ("gemini-2.5-flash", "minimal", {"thinkingBudget": 0}),
+    ("gemini-2.5-pro", "minimal", None),
+])
+def test_thinking_config_per_model(model, level, expected):
+    assert agent_module._gemini_thinking_config(model, level) == expected
+
+
+@pytest.mark.asyncio
+async def test_rejected_thinking_level_is_retried_without_it(gemini, monkeypatch):
+    monkeypatch.setattr(get_settings(), "GEMINI_MODEL", "gemini-3.8-flash")
+    monkeypatch.setattr(get_settings(), "GEMINI_THINKING_LEVEL", "minimal")
+
+    def respond(req):
+        body = json.loads(req.content)
+        if "thinkingConfig" in body["generationConfig"]:
+            return httpx.Response(400, json={"error": {"status": "INVALID_ARGUMENT",
+                                                       "message": "Thinking level MINIMAL is not supported for this model."}})
+        return httpx.Response(200, json=_gemini_ok(OK_JSON, model="gemini-3.8-flash"))
+
+    gemini["respond"] = respond
+    rec = await agent_module.generate_shopping_recommendation("ergonomic mouse", None, _catalog())
+    assert rec.provider == "gemini" and rec.model == "gemini-3.8-flash"
+    assert len(gemini["requests"]) == 2
+    first, second = (json.loads(r.content)["generationConfig"] for r in gemini["requests"])
+    assert first["thinkingConfig"] == {"thinkingLevel": "minimal"}
+    assert "thinkingConfig" not in second
+    assert "temperature" not in first  # Gemini 3 keeps its default temperature
+
+
 def test_auto_prefers_gemini_when_key_set(gemini):
     s = get_settings()
     assert s.ai_provider == "gemini"
@@ -67,7 +99,7 @@ async def test_gemini_success_is_labelled_and_validated(gemini):
     assert rec.product.id == 1
 
     req = gemini["requests"][0]
-    assert req.url.path.endswith("/models/gemini-2.5-flash:generateContent")
+    assert req.url.path.endswith(f"/models/{get_settings().GEMINI_MODEL}:generateContent")
     # Key goes in a header, never in the URL (URLs end up in logs).
     assert req.headers["x-goog-api-key"] == "test-gemini-key"
     assert "test-gemini-key" not in str(req.url)
@@ -161,5 +193,5 @@ def test_hijacked_gemini_still_blocked_end_to_end(client, sample_mandate, db_ses
 def test_status_reports_gemini_mode_without_key(client, gemini):
     data = client.get("/api/status").json()
     assert data["ai"]["mode"] == "gemini"
-    assert data["ai"]["model"] == "gemini-2.5-flash"
+    assert data["ai"]["model"] == get_settings().GEMINI_MODEL
     assert "test-gemini-key" not in json.dumps(data)

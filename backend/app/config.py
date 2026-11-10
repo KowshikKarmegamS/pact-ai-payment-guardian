@@ -34,7 +34,9 @@ class Settings(BaseSettings):
     AI_PROVIDER: str = "auto"
     AI_TIMEOUT_SECONDS: float = 20.0
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash"
+    # "minimal" keeps latency low; empty uses the model default. Rejected levels are retried without it.
+    GEMINI_THINKING_LEVEL: str = "minimal"
     GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta"
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"

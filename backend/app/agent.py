@@ -132,6 +132,17 @@ class AIProviderError(RuntimeError):
     """Provider call failed (network, auth, quota, safety block). Message is safe to log."""
 
 
+def _gemini_thinking_config(model: str, level: str) -> Optional[dict]:
+    """Keep 'thinking' minimal: picking one catalog item doesn't need it and it costs latency and quota."""
+    level = (level or "").strip().lower()
+    if not level:
+        return None
+    if model.startswith("gemini-2.5"):
+        # 2.5 models use a token budget; 0 disables thinking on Flash (Pro cannot disable it).
+        return {"thinkingBudget": 0} if "flash" in model else None
+    return {"thinkingLevel": level}
+
+
 async def _call_gemini(user_prompt: str, catalog: List[Product]) -> AIAgentRecommendation:
     """Google Gemini Developer API, generateContent with JSON output.
 
@@ -143,21 +154,27 @@ async def _call_gemini(user_prompt: str, catalog: List[Product]) -> AIAgentRecom
     settings = get_settings()
     model = settings.GEMINI_MODEL.strip()
     url = f"{settings.GEMINI_BASE_URL.rstrip('/')}/models/{model}:generateContent"
+    gen_config: dict = {"responseMimeType": "application/json", "maxOutputTokens": 2048}
+    thinking = _gemini_thinking_config(model, settings.GEMINI_THINKING_LEVEL)
+    if thinking:
+        gen_config["thinkingConfig"] = thinking
+    if not model.startswith("gemini-3"):
+        # Gemini 3 models are tuned for their default temperature; older ones benefit from a low one.
+        gen_config["temperature"] = 0.1
     body = {
         "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "contents": [{"role": "user", "parts": [{"text": _user_message(user_prompt, catalog)}]}],
-        "generationConfig": {
-            "responseMimeType": "application/json",
-            "temperature": 0.1,
-            "maxOutputTokens": 1024,
-            # Gemini 2.5 models "think" by default; recommendations don't need it and it costs quota.
-            **({"thinkingConfig": {"thinkingBudget": 0}} if "2.5-flash" in model else {}),
-        },
+        "generationConfig": gen_config,
     }
     headers = {"x-goog-api-key": settings.GEMINI_API_KEY.strip(), "Content-Type": "application/json"}
     try:
         async with httpx.AsyncClient(timeout=settings.AI_TIMEOUT_SECONDS) as client:
             response = await client.post(url, json=body, headers=headers)
+            if response.status_code == 400 and thinking and "thinking" in response.text.lower():
+                # The model rejects this thinking setting: retry once with the model's default.
+                gen_config.pop("thinkingConfig", None)
+                logger.info("Gemini model %s rejected thinking config; retrying without it", model)
+                response = await client.post(url, json=body, headers=headers)
     except httpx.TimeoutException:
         raise AIProviderError("Gemini request timed out")
     except httpx.HTTPError as exc:
