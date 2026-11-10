@@ -1,0 +1,40 @@
+# Render Blueprint for PACT (one web service, Docker).
+#
+# Persistence: SQLite lives on a Render persistent disk mounted at /var/data.
+# Persistent disks require a paid instance type (Starter or above); on the free
+# plan the filesystem is ephemeral and every deploy/restart would wipe the data.
+#
+# Secrets are declared with sync: false so Render prompts for them; never commit values.
+services:
+  - type: web
+    name: pact-ai-payment-guardian
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    disk:
+      name: pact-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:////var/data/pact.db
+      - key: PAYPAL_BASE_URL
+        value: https://api-m.sandbox.paypal.com
+      - key: PAYPAL_CURRENCY
+        value: USD
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      # Set to the service's public URL, e.g. https://pact-ai-payment-guardian.onrender.com
+      - key: APP_BASE_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: APP_SECRET_KEY
+        generateValue: true

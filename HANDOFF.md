@@ -1,35 +1,74 @@
-# HANDOFF.md — PACT Project State
+# HANDOFF.md — PACT project state
 
-> Last updated: 2026-11-09T00:12:00+05:30
+> Last updated: 2026-11-10 (branch `feat/judge-ready-payment-guardian`)
 
-## Current Milestone: End-to-End Real AI & PayPal Sandbox Flow Verified
+## Status at a glance
 
-## Root Cause Analysis & Fix for "Things don’t appear to be working"
+| Item | State | Evidence |
+|---|---|---|
+| Backend tests | **89 passed** (was 17) | `cd backend && pytest -q` |
+| Frontend production build | **passes**, no mock imports | `cd frontend && npm run build` |
+| PayPal Sandbox OAuth | **verified live** | `GET /api/status?check_paypal=true` → `oauth.ok: true` |
+| Real Sandbox order creation | **verified live** | orders `45E59597XE7243603` (curl smoke test, later rejected) and `4JN22935LV1612144` (via UI) |
+| Capture refused before buyer approval | **verified live** | PayPal returned `PAYER_ACTION_REQUIRED`; API answered `409 ORDER_NOT_APPROVED` |
+| Buyer approval + real capture | **NOT YET VERIFIED** | needs a human to log in with the Sandbox personal account (see next steps) |
+| OpenAI path | **not verified live** | `OPENAI_API_KEY` is empty in local `.env`; recommendations use the labelled heuristic. Unit tests cover the OpenAI branch with a stubbed client. |
+| Scenario A / B / C in UI | **verified** | screenshots in `docs/screenshots/` |
+| Route refresh, `/docs`, API 404s (single-process) | **verified** | `/`, `/assistant`, `/mandates`, `/audit`, `/docs` → 200 HTML; `/api/nope` → JSON 404 |
+| DB persistence with disk-path config | **verified** | data survived restart with `DATABASE_URL=sqlite:///<dir>/pact.db` |
+| Docker image build | **not run** | Docker Desktop daemon was not running |
+| Render deployment | **not deployed** | `render.yaml` needs a paid plan for the persistent disk |
+| Demo video | not recorded | script in `docs/DEMO_SCRIPT.md` |
 
-1. **Root Cause**:
-   - The SQLite database was initially initialized before `paypal_order_id`, `paypal_capture_id`, and `paypal_approval_url` were added to `Proposal` in `models.py`.
-   - Also, no default mandates were seeded into `mandates` table on first start.
-   - When the user requested a proposal, the database query failed, triggering a client-side mock fallback.
-   - The mock fallback opened a generic `https://www.sandbox.paypal.com/checkoutnow` without an active session token, causing PayPal to display: *"Things don’t appear to be working at the moment."*
-   - Capturing in mock mode produced a random placeholder string `CAP-ASFNAX1`.
+## What changed in this milestone
 
-2. **Fix Implemented**:
-   - Re-initialized a clean SQLite database with all updated columns.
-   - Added automatic `seed_mandates(db)` on startup in `backend/app/catalog.py` and `backend/app/main.py`.
-   - Added `Logitech MX Master 3S Advanced Wireless Mouse` and `Keychron Q1 Pro` to `SEED_PRODUCTS`.
-   - Stripped all silent mock fallbacks from `ShoppingAssistant.tsx` so the UI only interacts with the live backend and surfaces real errors if communication fails.
-   - Verified that live PayPal Orders API tokens (e.g. `84K512772B042014J`) are generated and populated into PayPal Sandbox checkout URLs.
+### Payment correctness (priority 1)
+- Removed the capture fallbacks that could store `"COMPLETED"` / `"ALREADY_CAPTURED"` as a capture ID.
+- Capture now: atomic lock → GET order → verify id/reference/mandate/amount/currency and status `APPROVED`
+  → re-verify approval fingerprint and policy → capture with stable `PayPal-Request-Id`
+  → CAPTURED only with a real capture ID, status COMPLETED, matching amount and currency.
+- Timeouts leave `CAPTURE_PENDING`; retry is idempotent and `/verify` reconciles an order PayPal already captured.
+- New state machine (see AGENTS.md). Legacy rows were migrated: old `APPROVED` → `APPROVAL_EXPIRED`
+  (no fingerprint existed), `PENDING` → `AWAITING_HUMAN_APPROVAL`, `REJECTED` → `POLICY_REJECTED`/`HUMAN_REJECTED`.
+  A backup of the pre-migration DB is at `backend/pact.db.bak-20261110` (git-ignored).
+- `PAYPAL_CURRENCY`, `APP_BASE_URL` settings; Sandbox-only enforcement; classified, sanitized PayPal errors.
 
-## Verified End-to-End Test
+### Approval binding
+- SHA-256 fingerprint over canonical proposal + mandate policy. Approve must echo it.
+  Re-checked at order creation and capture, and on every mandate update.
 
-- **Request**: "I need an ergonomic mouse for CAD modeling"
-- **Product Selected**: `Logitech MX Master 3S Advanced Wireless Mouse`
-- **Merchant**: `TechHub` | **Price**: `$99.99`
-- **Policy Evaluation**: `Passed: True` (Complies with budget, merchant, category whitelist)
-- **Human Approval**: Explicitly marked `APPROVED`
-- **Live PayPal Sandbox Order**:
-  - `Order ID`: `84K512772B042014J`
-  - `Checkout URL`: `https://www.sandbox.paypal.com/checkoutnow?token=84K512772B042014J`
+### AI
+- Strict pydantic validation of model output, catalog-only IDs, quantity 1–20, extra fields ignored and logged.
+- Provider/model/fallback reason stored per proposal and shown in UI; `/api/status` reports mode.
 
-- **Violation Test**: "Can you purchase a PlayStation 5 console for the office?"
-- **Policy Evaluation**: `Passed: False`, status `REJECTED`, 6 explicit violations accumulated (prohibited category, unapproved merchant, price limit exceeded, prohibited keyword).
+### Frontend
+- All pages on live data; `mockData.ts` deleted. Authorization Receipt, lifecycle stepper, popup-safe checkout,
+  PayPal return/cancel handling (BroadcastChannel + postMessage + polling), mandate CRUD/pause.
+
+### Deployment/docs
+- `Dockerfile`, `.dockerignore`, `render.yaml`; FastAPI serves `frontend/dist` when present.
+- README rewritten; `docs/DEMO_SCRIPT.md`, `docs/DEVPOST.md`.
+
+## Local run (as used for verification)
+
+```bash
+cd frontend && npm run build
+cd ../backend && APP_BASE_URL=http://localhost:8001 venv/Scripts/python -m uvicorn app.main:app --port 8001
+# open http://localhost:8001
+```
+
+Note: an older PACT server (v1.0.0) was found already listening on port 8000 and was left running untouched.
+Stop it before using port 8000 for the new build.
+
+## Next steps (in order)
+
+1. **Finish the live end-to-end test**: in the app, open proposal `d3764342-70b0-4a8e-bf65-686a450a89d9`
+   (order `4JN22935LV1612144`), click *Open PayPal checkout*, log in with the **Sandbox personal** account,
+   approve, then click *Capture $99.99*. Record the capture ID and audit events here.
+   If order creation/capture reports `CURRENCY_NOT_SUPPORTED`, see README "PayPal Sandbox setup → Currency".
+2. Add `OPENAI_API_KEY` to `backend/.env`, restart, and run scenarios A–C to confirm the OpenAI path
+   (sidebar should read "OpenAI gpt-4o-mini").
+3. Re-take screenshots of a CAPTURED receipt for the README.
+4. Record the demo video (`docs/DEMO_SCRIPT.md`), then add the link to README and Devpost.
+5. Optional: deploy to Render (paid Starter plan + disk), set `APP_BASE_URL`, verify `/api/status?check_paypal=true`.
+6. Merge `feat/judge-ready-payment-guardian` into `main`.
