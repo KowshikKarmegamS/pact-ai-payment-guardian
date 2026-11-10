@@ -66,8 +66,8 @@ def test_full_lifecycle_captures_only_after_verified_paypal_response(
     assert order["proposal"]["status"] == "AWAITING_PAYPAL_BUYER_APPROVAL"
     assert order["approve_url"].startswith("https://www.sandbox.paypal.com/")
     # Return/cancel URLs come from APP_BASE_URL, not a hardcoded localhost.
-    assert fake_paypal.last_create_kwargs["return_url"].startswith("http://testserver/assistant?paypal=return")
-    assert fake_paypal.last_create_kwargs["cancel_url"].startswith("http://testserver/assistant?paypal=cancel")
+    assert fake_paypal.last_create_kwargs["return_url"].startswith("http://testserver/proposals/")
+    assert fake_paypal.last_create_kwargs["cancel_url"].endswith("?paypal=cancel")
     assert fake_paypal.last_create_kwargs["currency"] == "USD"
 
     fake_paypal.buyer_approves(order["order_id"])

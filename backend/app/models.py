@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 import enum
 import uuid
+from typing import Optional
 from sqlalchemy import (
     Boolean,
     Column,
@@ -23,6 +24,13 @@ from app.database import Base
 def utc_now() -> datetime:
     """Return current UTC timestamp with timezone."""
     return datetime.now(timezone.utc)
+
+
+def as_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    """SQLite returns naive datetimes; PACT stores UTC, so treat naive values as UTC."""
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
 
 
 class ProposalStatus(str, enum.Enum):
@@ -102,6 +110,8 @@ class Mandate(Base):
     allowed_categories = Column(JSON, nullable=False, default=list)
     restrictions = Column(JSON, nullable=False, default=dict)
     is_active = Column(Boolean, nullable=False, default=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at = Column(
         DateTime(timezone=True),
@@ -146,6 +156,7 @@ class Proposal(Base):
     ai_model = Column(String(100), nullable=True)
     ai_fallback_reason = Column(Text, nullable=True)
     supersedes_id = Column(String(36), nullable=True)
+    alternatives = Column(JSON, nullable=True)
 
     # --- Deterministic policy decision ---
     policy_checks = Column(JSON, nullable=True)

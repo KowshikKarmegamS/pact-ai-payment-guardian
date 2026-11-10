@@ -7,16 +7,28 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.agent import generate_shopping_recommendation
+from app.agent import generate_shopping_recommendation, rank_alternatives
 from app.config import get_settings
 from app.database import get_db
-from app.models import AuditLog, Mandate, Product, Proposal, ProposalStatus, utc_now
+from app.models import (
+    COMMITTED_STATUSES,
+    SPENT_STATUSES,
+    AuditLog,
+    Mandate,
+    Product,
+    Proposal,
+    ProposalStatus,
+    as_utc,
+    utc_now,
+)
 from app.money import fmt, q
 from app.policy import PolicyEngine, checks_to_json
 from app.schemas import (
     AuditLogOut,
     AuthorizationReceipt,
     PolicyCheck,
+    ProductOut,
+    ReceiptBudget,
     PolicyResult,
     ProposalApproval,
     ProposalOut,
@@ -32,7 +44,7 @@ from app.services.authorization import (
     fingerprint_of,
     verify_authorization,
 )
-from app.services.mandate_service import budget_breakdown
+from app.services.mandate_service import budget_breakdown, mandate_status
 
 router = APIRouter(prefix="/proposals", tags=["Proposals"])
 
@@ -53,6 +65,36 @@ def _fail(http_status: int, code: str, message: str, **extra) -> HTTPException:
 class ShoppingPromptRequest(BaseModel):
     prompt: str = Field(..., min_length=2, max_length=1000, description="Natural-language shopping request")
     mandate_id: str = Field(..., description="Spending mandate that governs this purchase")
+
+
+class ProposeRequest(BaseModel):
+    """A user-selected catalog item, evaluated by exactly the same policy path as an AI pick."""
+
+    mandate_id: str
+    product_id: int
+    quantity: int = Field(default=1, ge=1, le=20)
+    source_proposal_id: Optional[str] = Field(default=None, description="The proposal whose alternative this was")
+
+
+def _alternatives_preview(db: Session, mandate: Mandate, prompt: str, catalog: List[Product], chosen: Product,
+                          remaining: Decimal) -> List[dict]:
+    """Up to three other matches with a deterministic eligibility preview (quantity 1)."""
+    settings = get_settings()
+    out = []
+    for alt in rank_alternatives(prompt, catalog, chosen.id):
+        preview = PolicyEngine.evaluate(
+            mandate=mandate,
+            proposal={"merchant": alt.merchant, "category": alt.category, "product_name": alt.name,
+                      "price": q(alt.price), "quantity": 1, "total_amount": q(alt.price),
+                      "currency": settings.currency},
+            product=alt, remaining_budget=remaining, expected_currency=settings.currency,
+        )
+        out.append({
+            "product_id": alt.id, "name": alt.name, "merchant": alt.merchant, "category": alt.category,
+            "price": f"{q(alt.price):.2f}", "in_stock": alt.in_stock, "eligible": preview.passed,
+            "blocking": [c.label for c in preview.checks if not c.passed],
+        })
+    return out
 
 
 class AIProvenance(BaseModel):
@@ -82,6 +124,8 @@ def _create_and_evaluate(
     fallback_reason: Optional[str],
     supersedes_id: Optional[str] = None,
     ai_audit: Optional[dict] = None,
+    catalog: Optional[List[Product]] = None,
+    origin_event: str = "AI_RECOMMENDATION_GENERATED",
 ) -> tuple:
     """Price the item from the catalog, run the policy engine, persist the decision."""
     settings = get_settings()
@@ -115,6 +159,8 @@ def _create_and_evaluate(
     )
     snapshot = canonical_snapshot(proposal, mandate)
     proposal.policy_checks = checks_to_json(policy)
+    if catalog is not None:
+        proposal.alternatives = _alternatives_preview(db, mandate, prompt or product.name, catalog, product, remaining)
     proposal.remaining_budget_at_decision = remaining
     proposal.approval_snapshot = snapshot
     proposal.proposal_fingerprint = fingerprint_of(snapshot)
@@ -124,7 +170,7 @@ def _create_and_evaluate(
     db.refresh(proposal)
 
     if ai_audit is not None:
-        log_audit_event(db, "AI_RECOMMENDATION_GENERATED", "Proposal", proposal.id, ai_audit)
+        log_audit_event(db, origin_event, "Proposal", proposal.id, ai_audit)
     log_audit_event(db, "POLICY_CHECK_PASSED" if policy.passed else "POLICY_CHECK_FAILED", "Proposal", proposal.id, {
         "mandate_id": mandate.id,
         "product_name": proposal.product_name,
@@ -163,6 +209,7 @@ async def generate_proposal(request: ShoppingPromptRequest, db: Session = Depend
         provider=rec.provider,
         model=rec.model,
         fallback_reason=rec.fallback_reason,
+        catalog=products,
         ai_audit={
             "provider": rec.provider,
             "model": rec.model,
@@ -188,6 +235,38 @@ async def generate_proposal(request: ShoppingPromptRequest, db: Session = Depend
         ai=AIProvenance(provider=rec.provider, model=rec.model, fallback_reason=rec.fallback_reason,
                         ignored_fields=rec.ignored_fields),
         message=message,
+    )
+
+
+@router.post("/propose", response_model=ProposalGenerationResponse, status_code=201,
+             summary="Evaluate a user-selected catalog item (no AI); same policy path")
+def propose_product(request: ProposeRequest, db: Session = Depends(get_db)):
+    mandate = db.query(Mandate).filter(Mandate.id == request.mandate_id).first()
+    if not mandate:
+        raise _fail(404, "NOT_FOUND", f"Mandate '{request.mandate_id}' was not found.")
+    product = db.query(Product).filter(Product.id == request.product_id).first()
+    if not product:
+        raise _fail(404, "NOT_FOUND", f"Product {request.product_id} is not in the catalog.")
+    source = None
+    if request.source_proposal_id:
+        source = db.query(Proposal).filter(Proposal.id == request.source_proposal_id).first()
+
+    proposal, policy = _create_and_evaluate(
+        db, mandate, product, request.quantity,
+        prompt=source.user_prompt if source else None,
+        reasoning="Selected by the user from the alternatives PACT listed.",
+        provider="user-selected", model=None, fallback_reason=None,
+        catalog=db.query(Product).order_by(Product.id).all(),
+        origin_event="PROPOSAL_CREATED_BY_USER",
+        ai_audit={"product_id": product.id, "quantity": request.quantity,
+                  "source_proposal_id": request.source_proposal_id},
+    )
+    return ProposalGenerationResponse(
+        proposal=ProposalOut.model_validate(proposal),
+        policy=policy,
+        ai=AIProvenance(provider="user-selected", model=None, fallback_reason=None),
+        message=("Policy engine PASSED. Awaiting your explicit approval." if policy.passed
+                 else "Policy engine BLOCKED this purchase: " + " ".join(policy.violations)),
     )
 
 
@@ -338,10 +417,22 @@ def get_receipt(proposal_id: str, db: Session = Depends(get_db)):
     decision_checks = [PolicyCheck(**c) for c in (proposal.policy_checks or [])]
     reval = [PolicyCheck(**c) for c in proposal.revalidation_checks] if proposal.revalidation_checks else None
 
+    spent, committed_other, available = budget_breakdown(db, mandate, exclude_proposal_id=proposal.id)
+    counted = proposal.status in COMMITTED_STATUSES or proposal.status in SPENT_STATUSES
+    this_amount = q(proposal.total_amount)
+    budget = ReceiptBudget(
+        max_budget=q(mandate.max_budget), spent=spent, committed_other=committed_other,
+        available=available, this_purchase=this_amount,
+        remaining_after=available - this_amount, counted=counted,
+    )
+
     return AuthorizationReceipt(
         proposal=ProposalOut.model_validate(proposal),
+        product=ProductOut.model_validate(product) if product else None,
+        budget=budget,
         mandate=ReceiptMandate(
             id=mandate.id, name=mandate.name, is_active=mandate.is_active,
+            status=mandate_status(mandate), expires_at=as_utc(mandate.expires_at),
             max_budget=q(mandate.max_budget), currency=mandate.currency or "USD",
             allowed_merchants=mandate.allowed_merchants or [],
             allowed_categories=mandate.allowed_categories or [],

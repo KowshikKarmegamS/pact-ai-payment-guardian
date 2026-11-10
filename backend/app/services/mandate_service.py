@@ -6,7 +6,7 @@ from typing import Optional, Tuple
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.models import COMMITTED_STATUSES, SPENT_STATUSES, Mandate, Proposal
+from app.models import COMMITTED_STATUSES, SPENT_STATUSES, Mandate, Proposal, as_utc, utc_now
 from app.money import q
 from app.schemas import MandateOut
 
@@ -47,6 +47,14 @@ def calculate_mandate_budget(
     return spent + committed, remaining
 
 
+def mandate_status(mandate: Mandate) -> str:
+    if mandate.revoked_at is not None:
+        return "revoked"
+    if mandate.expires_at is not None and as_utc(mandate.expires_at) <= utc_now():
+        return "expired"
+    return "active" if mandate.is_active else "paused"
+
+
 def build_mandate_out(db: Session, mandate: Mandate) -> MandateOut:
     spent, committed, remaining = budget_breakdown(db, mandate)
     return MandateOut(
@@ -58,6 +66,9 @@ def build_mandate_out(db: Session, mandate: Mandate) -> MandateOut:
         allowed_categories=mandate.allowed_categories or [],
         restrictions=mandate.restrictions or {},
         is_active=mandate.is_active,
+        expires_at=as_utc(mandate.expires_at),
+        revoked_at=as_utc(mandate.revoked_at),
+        status=mandate_status(mandate),
         created_at=mandate.created_at,
         updated_at=mandate.updated_at,
         spent_budget=spent,

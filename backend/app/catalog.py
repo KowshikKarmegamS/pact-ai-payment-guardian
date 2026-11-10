@@ -178,6 +178,24 @@ SEED_PRODUCTS = [
         "in_stock": True,
     },
     {
+        "name": "Keychron K8 Pro Wireless Mechanical Keyboard",
+        "description": "Tenkeyless wireless mechanical keyboard with hot-swappable switches, QMK/VIA support and Mac/Windows layouts. A dependable daily driver for coding.",
+        "price": Decimal("89.00"),
+        "category": "Electronics",
+        "merchant": "TechHub",
+        "image_url": None,
+        "in_stock": True,
+    },
+    {
+        "name": "NuPhy Halo75 V2 Wireless Mechanical Keyboard",
+        "description": "Premium 75% aluminium-frame wireless mechanical keyboard with gasket mount, tri-mode connectivity and RGB halo lighting.",
+        "price": Decimal("125.00"),
+        "category": "Electronics",
+        "merchant": "TechHub",
+        "image_url": None,
+        "in_stock": True,
+    },
+    {
         # Adversarial listing for the demo: its description tries to instruct the AI agent.
         # The policy engine never reads descriptions, so this cannot change the decision.
         "name": "Office Pro Noise-Cancelling Headset (Marketplace Listing)",

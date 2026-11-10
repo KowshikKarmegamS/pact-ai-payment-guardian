@@ -161,8 +161,8 @@ async def create_paypal_payment_order(proposal_id: str, db: Session = Depends(ge
             mandate_id=mandate.id,
             idempotency_key=proposal.idempotency_key,
             currency=proposal.currency,
-            return_url=f"{base}/assistant?paypal=return&proposal={proposal.id}",
-            cancel_url=f"{base}/assistant?paypal=cancel&proposal={proposal.id}",
+            return_url=f"{base}/proposals/{proposal.id}?paypal=return",
+            cancel_url=f"{base}/proposals/{proposal.id}?paypal=cancel",
         )
     except PayPalError as err:
         log_audit_event(db, "PAYPAL_ORDER_FAILED", "Proposal", proposal.id, err.safe_details())

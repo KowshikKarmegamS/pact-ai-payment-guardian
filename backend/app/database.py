@@ -42,6 +42,9 @@ def get_db() -> Generator[Session, None, None]:
 # Columns added after the first release. (table, column, SQL type + default)
 _ADDITIVE_COLUMNS = [
     ("mandates", "currency", "VARCHAR(3) NOT NULL DEFAULT 'USD'"),
+    ("mandates", "expires_at", "DATETIME"),
+    ("mandates", "revoked_at", "DATETIME"),
+    ("proposals", "alternatives", "JSON"),
     ("proposals", "currency", "VARCHAR(3) NOT NULL DEFAULT 'USD'"),
     ("proposals", "status_reason", "TEXT"),
     ("proposals", "user_prompt", "TEXT"),

@@ -305,5 +305,25 @@ def heuristic_recommendation(user_prompt: str, available_products: List[Product]
     )
 
 
+def rank_alternatives(user_prompt: str, catalog: List[Product], exclude_id: int, limit: int = 3) -> List[Product]:
+    """Other catalog items that match the request, by the deterministic keyword score (not AI)."""
+    prompt_tokens = _tokens(user_prompt or "")
+    chosen = next((p for p in catalog if p.id == exclude_id), None)
+    scored = []
+    for prod in catalog:
+        if prod.id == exclude_id:
+            continue
+        score = (
+            len(prompt_tokens & _tokens(prod.name)) * 10
+            + len(prompt_tokens & _tokens(prod.category)) * 5
+            + len(prompt_tokens & _tokens(prod.description)) * 2
+            + (4 if chosen is not None and prod.category == chosen.category else 0)
+        )
+        if score > 0:
+            scored.append((score, -prod.id, prod))
+    scored.sort(key=lambda x: (x[0], x[1]), reverse=True)
+    return [p for _, _, p in scored[:limit]]
+
+
 # Backward-compatible name
 _heuristic_agent_recommendation = lambda prompt, mandate, products: heuristic_recommendation(prompt, products)  # noqa: E731

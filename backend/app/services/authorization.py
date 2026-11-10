@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import Mandate, Product, Proposal, ProposalStatus, utc_now
+from app.models import APPROVED_STATUSES, Mandate, Product, Proposal, ProposalStatus, as_utc, utc_now
 from app.money import fmt, q
 from app.policy import PolicyEngine, checks_to_json
 from app.schemas import PolicyResult
@@ -75,6 +75,7 @@ def canonical_snapshot(proposal: Proposal, mandate: Mandate) -> Dict[str, Any]:
             "active": bool(mandate.is_active),
             "currency": (mandate.currency or "").upper(),
             "max_budget": _money(mandate.max_budget),
+            "expires_at": as_utc(mandate.expires_at).isoformat(timespec="seconds") if mandate.expires_at else None,
             "allowed_merchants": _canon_list(mandate.allowed_merchants),
             "allowed_categories": _canon_list(mandate.allowed_categories),
             "restrictions": _canon_restrictions(mandate.restrictions),
@@ -100,6 +101,7 @@ _LABELS = {
     ("mandate", "active"): "Mandate active",
     ("mandate", "currency"): "Mandate currency",
     ("mandate", "max_budget"): "Mandate budget",
+    ("mandate", "expires_at"): "Mandate expiry",
     ("mandate", "allowed_merchants"): "Allowed merchants",
     ("mandate", "allowed_categories"): "Allowed categories",
     ("mandate", "restrictions"): "Mandate restrictions",
@@ -226,6 +228,31 @@ def expire_approval(db: Session, proposal: Proposal, stage: str, result: Integri
         },
     )
     return message
+
+
+def recheck_open_proposals(db: Session, proposals: List[Proposal], stage: str) -> int:
+    """Re-verify proposals that are awaiting approval or hold a live approval.
+
+    Used whenever something they depend on changes (mandate edit, revoke, catalog price).
+    Returns how many were invalidated.
+    """
+    invalidated = 0
+    for proposal in proposals:
+        mandate = db.query(Mandate).filter(Mandate.id == proposal.mandate_id).first()
+        product = db.query(Product).filter(Product.id == proposal.product_id).first()
+        if mandate is None:
+            continue
+        approved = proposal.status in APPROVED_STATUSES
+        result = verify_authorization(db, proposal, mandate, product, require_approval=approved)
+        if result.ok:
+            db.commit()
+        else:
+            expire_approval(db, proposal, stage, result)
+            invalidated += 1
+    return invalidated
+
+
+OPEN_STATUSES = tuple(APPROVED_STATUSES) + (ProposalStatus.AWAITING_HUMAN_APPROVAL,)
 
 
 def iso(dt: Optional[datetime]) -> Optional[str]:

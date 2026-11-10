@@ -7,6 +7,7 @@ every time, with a per-rule explanation that powers the Authorization Receipt.
 AI-produced text (reasoning, product descriptions) is never an input here.
 """
 
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
@@ -41,6 +42,7 @@ class PolicyEngine:
         remaining_budget: Optional[Decimal] = None,
         product: Optional[Any] = None,
         expected_currency: Optional[str] = None,
+        now: Optional[datetime] = None,
     ) -> PolicyResult:
         """Evaluate every rule and collect all results (no short-circuit).
 
@@ -68,6 +70,21 @@ class PolicyEngine:
             is_active,
             "Mandate is active." if is_active else "Mandate is inactive.",
         )
+
+        # 1b. Mandate expiry (only when the user set one)
+        expires_at = _val(mandate, "expires_at", None)
+        if isinstance(expires_at, datetime):
+            exp = expires_at.replace(tzinfo=timezone.utc) if expires_at.tzinfo is None else expires_at
+            current = now or datetime.now(timezone.utc)
+            current = current.replace(tzinfo=timezone.utc) if current.tzinfo is None else current
+            not_expired = current < exp
+            stamp = exp.strftime("%Y-%m-%d %H:%M UTC")
+            add(
+                "mandate_not_expired",
+                "Mandate has not expired",
+                not_expired,
+                f"Mandate is valid until {stamp}." if not_expired else f"Mandate expired on {stamp}.",
+            )
 
         p_merchant = str(_val(proposal, "merchant", "") or "").strip()
         p_category = str(_val(proposal, "category", "") or "").strip()
@@ -236,6 +253,28 @@ class PolicyEngine:
             f"'{p_name}' is in stock." if in_stock else f"Product '{p_name}' is currently out of stock.",
         )
 
+        # Attach "what the proposal has" vs "what the mandate allows" for the authorization screen.
+        scope = locals()
+        facts: Dict[str, tuple] = {
+            "merchant_allowlist": (p_merchant or "none", ", ".join(allowed_merchants) or "none"),
+            "category_allowlist": (p_category or "none", ", ".join(allowed_categories) or "none"),
+            "budget": (fmt(p_total, currency), f"{fmt(budget, currency)} available"),
+            "quantity": (str(raw_qty), f"1 to {max_qty}"),
+            "amount_integrity": (fmt(p_total, currency), fmt(expected_total, currency)),
+            "currency": (p_currency, currency),
+        }
+        if "max_item_dec" in scope:
+            facts["max_unit_price"] = (fmt(p_price, currency), f"up to {fmt(scope['max_item_dec'], currency)}")
+        if "min_item_dec" in scope:
+            facts["min_unit_price"] = (fmt(p_price, currency), f"at least {fmt(scope['min_item_dec'], currency)}")
+        if blocked_merchants:
+            facts["merchant_blocklist"] = (p_merchant or "none", "not " + ", ".join(blocked_merchants))
+        if keywords:
+            facts["prohibited_keywords"] = (p_name, "must not contain " + ", ".join(keywords))
+        for c in checks:
+            if c.rule in facts:
+                c.actual, c.limit = facts[c.rule]
+
         violations = [c.detail for c in checks if not c.passed]
         return PolicyResult(
             passed=not violations,
@@ -255,6 +294,7 @@ def evaluate_policy(
     remaining_budget: Optional[Decimal] = None,
     product: Optional[Any] = None,
     expected_currency: Optional[str] = None,
+    now: Optional[datetime] = None,
 ) -> PolicyResult:
     """Evaluate a proposal against mandate policies using the global PolicyEngine."""
     return policy_engine.evaluate(
@@ -263,6 +303,7 @@ def evaluate_policy(
         remaining_budget=remaining_budget,
         product=product,
         expected_currency=expected_currency,
+        now=now,
     )
 
 

@@ -104,6 +104,7 @@ class MandateBase(BaseModel):
         default_factory=dict,
         description="max_price_per_item, min_price_per_item, max_quantity, prohibited_keywords, prohibited_merchants",
     )
+    expires_at: Optional[datetime] = Field(default=None, description="After this instant every purchase is blocked")
 
 
 class MandateCreate(MandateBase):
@@ -132,6 +133,7 @@ class MandateUpdate(BaseModel):
     allowed_categories: Optional[List[str]] = None
     restrictions: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
+    expires_at: Optional[datetime] = Field(default=None, description="Send null to remove the expiry")
 
     @field_validator("allowed_merchants", "allowed_categories")
     @classmethod
@@ -157,6 +159,8 @@ class MandateOut(MandateBase):
     id: str
     currency: str
     is_active: bool
+    revoked_at: Optional[datetime] = None
+    status: str = Field(default="active", description="active | paused | expired | revoked")
     created_at: datetime
     updated_at: datetime
     spent_budget: Decimal = Field(default=Decimal("0.00"), description="Verified captured spend")
@@ -177,6 +181,8 @@ class PolicyCheck(BaseModel):
     label: str
     passed: bool
     detail: str
+    actual: Optional[str] = Field(default=None, description="What the proposal has")
+    limit: Optional[str] = Field(default=None, description="What the mandate allows")
 
 
 class PolicyResult(BaseModel):
@@ -224,6 +230,7 @@ class ProposalOut(BaseModel):
     ai_model: Optional[str] = None
     ai_fallback_reason: Optional[str] = None
     supersedes_id: Optional[str] = None
+    alternatives: Optional[List[Dict[str, Any]]] = None
     policy_checks: Optional[List[Dict[str, Any]]] = None
     remaining_budget_at_decision: Optional[Decimal] = None
     proposal_fingerprint: Optional[str] = None
@@ -268,6 +275,8 @@ class ReceiptMandate(BaseModel):
     id: str
     name: str
     is_active: bool
+    status: str = "active"
+    expires_at: Optional[datetime] = None
     max_budget: Decimal
     currency: str
     allowed_merchants: List[str]
@@ -283,10 +292,24 @@ class ReceiptIntegrity(BaseModel):
     changes: List[str] = Field(default_factory=list)
 
 
+class ReceiptBudget(BaseModel):
+    """Live budget position of the mandate, relative to this proposal."""
+
+    max_budget: Decimal
+    spent: Decimal
+    committed_other: Decimal
+    available: Decimal
+    this_purchase: Decimal
+    remaining_after: Decimal
+    counted: bool = Field(description="True when this proposal already holds or has consumed budget")
+
+
 class AuthorizationReceipt(BaseModel):
     """Server-assembled explanation of why a purchase was permitted or blocked."""
 
     proposal: ProposalOut
+    product: Optional[ProductOut] = None
+    budget: Optional[ReceiptBudget] = None
     mandate: ReceiptMandate
     decision: str  # "BLOCKED" | "AUTHORIZED"
     decision_checks: List[PolicyCheck]
