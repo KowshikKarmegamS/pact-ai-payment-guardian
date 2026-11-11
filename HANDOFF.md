@@ -14,8 +14,8 @@
 | Owner sign-in | **implemented and tested** (unit tests + manual browser test): wrong password rejected, sign-in unlocks, sign-out locks | set `OWNER_PASSWORD` |
 | Demo video | **final**: `demo/pact-hackathon-final.mp4`, 2:49 (169.4 s), 1920x1080 H.264 High 30 fps + AAC-LC 48 kHz stereo, 51 MB, decodes with zero errors | `ffprobe`, `ffmpeg -v error -i … -f null -` |
 | Screenshots | **current** dark UI, 9 images in `docs/screenshots/` (7 desktop 1440x900, 2 mobile 390x844 @2x) | README → Screenshots |
-| Render deployment | **not deployed**; no hosted URL exists | — |
-| Docker image | **not built locally** | `docker build -t pact .` |
+| Render deployment | **live** at https://pact-ai-payment-guardian.onrender.com (free plan; data resets on restart/sleep). Verified: health 200, PayPal Sandbox OAuth OK, Gemini configured, owner routes 401 until sign-in, agent gateway 401 without key, sign-in screen renders | `/api/status?check_paypal=true` |
+| Docker image | **builds and runs locally**; fails closed without `OWNER_PASSWORD` | `docker build -t pact .` |
 
 ## What PACT is
 
@@ -61,8 +61,6 @@ PayPal capture ID with status COMPLETED and a matching amount and currency.
 1. Watch and listen to `demo/pact-hackathon-final.mp4` once, end to end.
 2. Upload the video to YouTube (unlisted) or Vimeo and paste that link into Devpost (`docs/DEVPOST.md` has the
    repository and in-repo video links).
-3. Deploy to Render: `render.yaml` uses the **free plan** (no disk; data resets on restart, redeploy or spin-down). Set `OWNER_PASSWORD`, PayPal Sandbox credentials,
-   `GEMINI_API_KEY`, `APP_BASE_URL`, `CORS_ORIGINS`; then check `/api/status?check_paypal=true` and the sign-in.
-   Build the Docker image locally first.
+3. Not yet verified on the live site (needs the owner password): a signed-in Gemini recommendation and a PayPal Sandbox payment end to end.
 4. An old PACT v1.0.0 server may still be listening on port 8000 on the development machine; stop it before using
    that port.

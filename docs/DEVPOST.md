@@ -6,7 +6,7 @@
 - **Demo video (2:49, in the repository):** https://github.com/KowshikKarmegamS/pact-ai-payment-guardian/blob/main/demo/pact-hackathon-final.mp4
   (direct file: https://github.com/KowshikKarmegamS/pact-ai-payment-guardian/raw/main/demo/pact-hackathon-final.mp4).
   Devpost's video field expects YouTube, Vimeo or Youku: upload this same file there and paste that link.
-- **Live demo:** none. PACT is not deployed; run it locally (README → Run it locally).
+- **Live app:** https://pact-ai-payment-guardian.onrender.com (Render free plan, PayPal Sandbox). The Control Center requires the owner password; share it with judges privately, never in the repository. The instance sleeps when idle (first load can take about a minute) and its data resets on restart.
 
 ## Tagline
 

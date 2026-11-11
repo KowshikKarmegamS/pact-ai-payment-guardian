@@ -19,7 +19,7 @@ AI agents can now research products and prepare purchases. The obvious next step
 
 PACT does not replace PayPal's payment security; it adds an independent governance layer for *what an agent is allowed to spend*, and leaves money movement to PayPal.
 
-Built for the PayPal AI Hackathon. MIT licensed.
+Built for the PayPal AI Hackathon. MIT licensed. **Live (owner sign-in required):** https://pact-ai-payment-guardian.onrender.com · **Demo video:** [`demo/pact-hackathon-final.mp4`](demo/pact-hackathon-final.mp4)
 
 ---
 
@@ -298,7 +298,7 @@ The blueprint sets `REQUIRE_OWNER_AUTH=true`, so a deployment **fails closed**: 
 2. Enter `OWNER_PASSWORD` (long and random), `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` (Sandbox), `GEMINI_API_KEY`, and set `APP_BASE_URL` and `CORS_ORIGINS` to the service URL.
 3. Deploy, open `/api/status?check_paypal=true`, then sign in to the Control Center.
 
-Status: **not deployed**; no hosted URL exists. The tested path is the local setup above.
+Status: **deployed** at https://pact-ai-payment-guardian.onrender.com (verified 2026-11-11: `/api/health` 200; `/api/status?check_paypal=true` reports Sandbox OAuth OK and Gemini configured; owner routes return 401 until sign-in; the Agent Gateway returns 401 without a key). The Control Center needs the owner password, which is not published. Data resets whenever the free instance restarts or sleeps.
 
 ## Known limitations
 

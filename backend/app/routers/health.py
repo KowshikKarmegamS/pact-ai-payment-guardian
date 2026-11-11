@@ -19,7 +19,7 @@ _OAUTH_TTL = 120.0
 def get_health() -> Dict[str, str]:
     return {
         "status": "healthy",
-        "version": "1.1.0",
+        "version": "1.2.0",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
