@@ -21,7 +21,6 @@ FPS = 30
 LEAD, TAIL = 0.45, 0.5          # silence before / after each narration line inside its clip
 CARD_FADE = 0.45
 XFADE = 0.35                      # crossfade between consecutive clips (replaces hard cuts)
-PUSH_IN = 0.035                   # slow zoom over each app clip so held screens never look frozen
 
 
 def run(args, cwd=None):
@@ -97,12 +96,6 @@ def build_clip(seg, index, total) -> dict:
     if played < dur:
         filters.append(f"tpad=stop_mode=clone:stop_duration={dur - played + 0.1:.3f}")
     is_card = take.startswith("card-")
-    if not is_card:
-        # Gentle push-in toward the centre. Upscale first so the moving crop does not jitter.
-        frames = int(round(dur * FPS)) or 1
-        filters.append("scale=3840:2160:flags=bicubic")
-        filters.append(f"zoompan=z='1+{PUSH_IN}*on/{frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
-                       f":d=1:s=1920x1080:fps={FPS}")
     if is_card or index == 0:
         filters.append(f"fade=t=in:st=0:d={CARD_FADE}")
     if is_card or index == total - 1:

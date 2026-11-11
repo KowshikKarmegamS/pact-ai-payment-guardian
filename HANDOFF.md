@@ -67,6 +67,8 @@ PayPal capture ID with status COMPLETED and a matching amount and currency.
 - 11 lines re-voiced: 9 with `gemini-3.8-flash-tts`, `14d`/`14e` with `gemini-3.8-flash-lite-tts` (daily limit).
   All 11 transcribed and match the script. At 2:22 a re-transcription of the final video hears "And" clearly but "Pact" as "practice": listen to that word.
 - `demo/tools/pact-demo.db.bak-before-v2` is the database before these takes.
+- App scenes are static: the slow push-in zoom was removed because ffmpeg's `zoompan` moved in whole-pixel
+  steps and read as shaking. Clips still crossfade into each other.
 
 ## Remaining tasks
 
