@@ -15,7 +15,7 @@
 | Demo video | **final (v2)**: `demo/pact-hackathon-final.mp4`, 2:54 (174.1 s), 1920x1080 H.264 30 fps + AAC 48 kHz stereo, 51 MB, decodes with zero errors. Adds agent connection, the fingerprint card, merchant connectors and the architecture card | `ffprobe`, `ffmpeg -v error -i … -f null -` |
 | Screenshots | **current** dark UI, 9 images in `docs/screenshots/` (7 desktop 1440x900, 2 mobile 390x844 @2x) | README → Screenshots |
 | Render deployment | **live** at https://pact-ai-payment-guardian.onrender.com (free plan; data resets on restart/sleep). Verified: health 200, PayPal Sandbox OAuth OK, Gemini configured, owner routes 401 until sign-in, agent gateway 401 without key, sign-in screen renders | `/api/status?check_paypal=true` |
-| Merchant connectors | **implemented and tested** (8 tests; manual browser test on a scratch database): `MerchantConnector.fetch_offers()`, bundled Shopify-format Northwind Supply feed, Catalog → Sync, approvals re-verified on sync. **Not deployed to Render yet** (needs a push) | `GET /api/connectors` |
+| Merchant connectors | **implemented and tested** (8 tests; manual browser test on a scratch database): `MerchantConnector.fetch_offers()`, bundled Shopify-format Northwind Supply feed, Catalog → Sync, approvals re-verified on sync. **Deployed** (commit `dfa31a0`, 2026-11-12): the live API lists `/api/connectors` and `/api/connectors/{id}/sync`, which return 401 until owner sign-in. A signed-in sync on the live site is not yet tested | `GET /api/connectors` |
 | Docker image | **builds and runs locally**; fails closed without `OWNER_PASSWORD` | `docker build -t pact .` |
 
 ## What PACT is
@@ -65,12 +65,12 @@ PayPal capture ID with status COMPLETED and a matching amount and currency.
 - New cards: `fingerprint.html` (values and 409/200 responses from a real run on a scratch database; its hash
   `4e312a16…` is that run's, not the video's $89 proposal, and the card says "demo run") and `connectors.html`.
 - 11 lines re-voiced: 9 with `gemini-3.8-flash-tts`, `14d`/`14e` with `gemini-3.8-flash-lite-tts` (daily limit).
-  All 11 transcribed and match the script; the transcriber heard "In Pact" for "And Pact" at 2:22.
+  All 11 transcribed and match the script. At 2:22 a re-transcription of the final video hears "And" clearly but "Pact" as "practice": listen to that word.
 - `demo/tools/pact-demo.db.bak-before-v2` is the database before these takes.
 
 ## Remaining tasks
 
-1. Watch and listen to `demo/pact-hackathon-final.mp4` once, end to end (check the line at 2:22).
+1. Watch and listen to `demo/pact-hackathon-final.mp4` once, end to end (listen to the word "Pact" at 2:22).
 2. Upload the video to YouTube (unlisted) or Vimeo and paste that link into Devpost (`docs/DEVPOST.md` has the
    repository and in-repo video links).
 3. Not yet verified on the live site (needs the owner password): a signed-in Gemini recommendation and a PayPal Sandbox payment end to end.
