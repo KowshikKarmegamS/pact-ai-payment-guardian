@@ -61,7 +61,7 @@ PayPal capture ID with status COMPLETED and a matching amount and currency.
 1. Watch and listen to `demo/pact-hackathon-final.mp4` once, end to end.
 2. Upload the video to YouTube (unlisted) or Vimeo and paste that link into Devpost (`docs/DEVPOST.md` has the
    repository and in-repo video links).
-3. Optional: deploy to Render (paid Starter plan + disk). Set `OWNER_PASSWORD`, PayPal Sandbox credentials,
+3. Deploy to Render: `render.yaml` uses the **free plan** (no disk; data resets on restart, redeploy or spin-down). Set `OWNER_PASSWORD`, PayPal Sandbox credentials,
    `GEMINI_API_KEY`, `APP_BASE_URL`, `CORS_ORIGINS`; then check `/api/status?check_paypal=true` and the sign-in.
    Build the Docker image locally first.
 4. An old PACT v1.0.0 server may still be listening on port 8000 on the development machine; stop it before using

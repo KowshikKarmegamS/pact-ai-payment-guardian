@@ -290,7 +290,7 @@ cd frontend && npm ci && npm run build
 
 ## Deployment (Render)
 
-`render.yaml` + `Dockerfile` define one web service: the image builds the React app and serves it from FastAPI. SQLite is stored on a **Render persistent disk** at `/var/data` (`DATABASE_URL=sqlite:////var/data/pact.db`). Persistent disks require a paid instance (Starter or above); on the free plan the filesystem is wiped on every deploy.
+`render.yaml` + `Dockerfile` define one web service on Render's **free plan**: the image builds the React app and serves it from FastAPI. The free plan has no persistent disk, so SQLite lives in `/tmp` and **all data resets** whenever the service restarts, redeploys or spins down after inactivity (the catalog and seed mandates are recreated on start; the first request after a spin-down takes a while). For persistent data, switch to a paid plan with a disk (see the comment at the top of `render.yaml`).
 
 The blueprint sets `REQUIRE_OWNER_AUTH=true`, so a deployment **fails closed**: mandates, approvals, payments and agent management are refused until `OWNER_PASSWORD` is set. Never run a public instance without it.
 

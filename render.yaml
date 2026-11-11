@@ -1,24 +1,23 @@
-# Render Blueprint for PACT (one web service, Docker).
+# Render Blueprint for PACT (one web service, Docker, free plan).
 #
-# Persistence: SQLite lives on a Render persistent disk mounted at /var/data.
-# Persistent disks require a paid instance type (Starter or above); on the free
-# plan the filesystem is ephemeral and every deploy/restart would wipe the data.
+# Persistence: the free plan has no persistent disk, so SQLite lives in /tmp and is reset
+# whenever the service restarts, redeploys or spins down after inactivity. The catalog and
+# seed mandates are recreated on every start. For persistent data use a paid plan with a disk:
+#   plan: starter
+#   disk: { name: pact-data, mountPath: /var/data, sizeGB: 1 }
+#   DATABASE_URL=sqlite:////var/data/pact.db
 #
 # Secrets are declared with sync: false so Render prompts for them; never commit values.
 services:
   - type: web
     name: pact-ai-payment-guardian
     runtime: docker
-    plan: starter
+    plan: free
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/health
-    disk:
-      name: pact-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: DATABASE_URL
-        value: sqlite:////var/data/pact.db
+        value: sqlite:////tmp/pact.db
       - key: PAYPAL_BASE_URL
         value: https://api-m.sandbox.paypal.com
       - key: PAYPAL_CURRENCY
