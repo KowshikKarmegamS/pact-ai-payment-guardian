@@ -72,11 +72,14 @@ Stop it before using port 8000 for the new build.
 ## UI redesign and demo video (2026-11-11)
 
 - Dark redesign of all screens is committed; 124 backend tests pass; frontend builds.
-- `demo/pact-hackathon-final.mp4`: 1920x1080, H.264 (yuv420p) + AAC, 2:41. All three app takes were recorded in story
+- `demo/pact-hackathon-final.mp4`: 1920x1080, H.264 (yuv420p) + AAC, 2:39. All three app takes were recorded in story
   order on one clean copy of the database, with Gemini recommendations and a real PayPal Sandbox payment:
   order `6X20893840026523N`, capture `223819305K399301H` (COMPLETED, 89.00 USD).
-- Narration is Windows built-in TTS ("David"); script in `demo/pact-narration.txt`, captions in
-  `demo/pact-demo-assets/captions.srt`. Replace the WAVs in `demo/tools/work/voice/` and run `python build.py` to re-voice.
+- Narration: Google Gemini text-to-speech, voice "Charon" (`demo/tools/tts_gemini.py`). Lines 1-4 come from
+  `gemini-3.8-flash-tts`, lines 5-15 from `gemini-3.8-flash-lite-tts`, because the free tier allows about 10 speech
+  requests per day per model. Every line was checked by transcript against the script. To make the voice uniform,
+  run `python tts_gemini.py --model <one model> <ids...>` after the daily quota resets, then `python build.py`.
+  The earlier Windows-voice narration is kept in `demo/tools/work/voice-david/` (git-ignored).
 - To re-record: demo server on :8002 with `demo/tools/pact-demo.db`, recorder profile signed in to the PayPal Sandbox
   buyer (`node record.mjs login`), then `bash run_takes.sh && python build.py` in `demo/tools`.
 - Servers left running: old v1.0.0 on :8000, main app on :8001 (restart to pick up latest backend and key), demo on :8002.
