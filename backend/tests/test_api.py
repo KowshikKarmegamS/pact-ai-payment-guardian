@@ -22,7 +22,7 @@ def test_root_endpoint(client: TestClient) -> None:
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "operational"
-    assert data["service"] == "PACT – AI Payment Guardian"
+    assert data["service"] == "PACT – AI Payment Authorization Gateway"
 
 
 def test_products_list_and_filter(
