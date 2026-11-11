@@ -12,7 +12,7 @@ def test_health_endpoint(client: TestClient) -> None:
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
-    assert data["version"] == "1.1.0"
+    assert data["version"] == "1.2.0"
     assert "timestamp" in data
 
 
