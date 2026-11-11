@@ -1,4 +1,4 @@
-"""FastAPI application entrypoint for PACT – AI Payment Guardian."""
+"""FastAPI application entrypoint for PACT – AI Payment Authorization Gateway."""
 
 import logging
 from contextlib import asynccontextmanager
@@ -118,5 +118,5 @@ if _index.exists():
 else:
     @app.get("/", tags=["Root"])
     def read_root() -> dict:
-        return {"service": "PACT – AI Payment Guardian", "status": "operational", "docs_url": "/docs", "api_prefix": "/api",
+        return {"service": "PACT – AI Payment Authorization Gateway", "status": "operational", "docs_url": "/docs", "api_prefix": "/api",
                 "frontend": "not built (run `npm run build` in frontend/)"}

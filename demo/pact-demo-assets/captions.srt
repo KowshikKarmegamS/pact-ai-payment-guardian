@@ -119,105 +119,105 @@ PACT creates a real PayPal Sandbox order,
 and the buyer approves it in PayPal Checkout.
 
 31
-00:01:34,200 --> 00:01:36,719
+00:01:34,200 --> 00:01:36,720
 Back in PACT, the server asks PayPal directly
 
 32
-00:01:36,719 --> 00:01:38,383
+00:01:36,720 --> 00:01:38,384
 whether the buyer approved.
 
 33
-00:01:38,383 --> 00:01:40,820
+00:01:38,384 --> 00:01:40,821
 Only then can the payment be captured.
 
 34
-00:01:41,316 --> 00:01:42,564
+00:01:41,317 --> 00:01:42,564
 Captured.
 
 35
-00:01:42,564 --> 00:01:46,305
+00:01:42,564 --> 00:01:46,306
 A real PayPal capture ID, status COMPLETED,
 
 36
-00:01:46,305 --> 00:01:48,316
+00:01:46,306 --> 00:01:48,316
 for exactly $89.
 
 37
-00:01:48,799 --> 00:01:51,245
+00:01:48,833 --> 00:01:51,278
 What if something changes after approval?
 
 38
-00:01:51,245 --> 00:01:53,042
+00:01:51,278 --> 00:01:53,075
 I approve a second keyboard.
 
 39
-00:01:53,042 --> 00:01:55,438
+00:01:53,075 --> 00:01:55,471
 Then the merchant raises the price.
 
 40
-00:01:55,949 --> 00:01:57,915
+00:01:55,983 --> 00:01:57,948
 The approval is void at once.
 
 41
-00:01:57,915 --> 00:02:01,353
+00:01:57,948 --> 00:02:01,386
 A change can never silently inherit an old approval.
 
 42
-00:02:01,866 --> 00:02:04,554
+00:02:01,899 --> 00:02:04,588
 Every step is recorded in the audit trail:
 
 43
-00:02:04,554 --> 00:02:07,135
+00:02:04,588 --> 00:02:07,168
 the recommendation, the policy decision,
 
 44
-00:02:07,135 --> 00:02:10,342
+00:02:07,168 --> 00:02:10,376
 the approval, the PayPal order and the capture.
 
 45
-00:02:10,849 --> 00:02:13,794
+00:02:10,883 --> 00:02:13,827
 And PACT isn't tied to one assistant.
 
 46
-00:02:13,794 --> 00:02:16,477
+00:02:13,827 --> 00:02:16,510
 Claude, ChatGPT or your own agent
 
 47
-00:02:16,477 --> 00:02:19,683
+00:02:16,510 --> 00:02:19,717
 connect through PACT's API or MCP server.
 
 48
-00:02:19,683 --> 00:02:23,741
+00:02:19,717 --> 00:02:23,774
 This separate Gemini agent is told money is no object.
 
 49
-00:02:23,741 --> 00:02:25,757
+00:02:23,774 --> 00:02:25,791
 PACT still says no.
 
 50
-00:02:26,533 --> 00:02:30,651
+00:02:26,566 --> 00:02:30,684
 In the Control Center, every agent gets its own revocable key,
 
 51
-00:02:30,651 --> 00:02:32,887
+00:02:30,684 --> 00:02:32,920
 and its requests wait for you.
 
 52
-00:02:32,887 --> 00:02:34,240
+00:02:32,920 --> 00:02:34,273
 Agents can ask.
 
 53
-00:02:34,240 --> 00:02:37,314
+00:02:34,273 --> 00:02:37,347
 Only you approve, and only PACT can pay.
 
 54
-00:02:37,816 --> 00:02:41,262
+00:02:37,849 --> 00:02:41,295
 Agents request. The policy engine authorizes.
 
 55
-00:02:41,262 --> 00:02:43,992
+00:02:41,295 --> 00:02:44,026
 A human approves. PayPal executes.
 
 56
-00:02:43,992 --> 00:02:48,273
+00:02:44,026 --> 00:02:48,306
 PACT. The payment authorization gateway for AI agents.

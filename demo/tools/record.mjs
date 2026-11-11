@@ -133,7 +133,7 @@ const takes = {
     await page.mouse.up();
     await sleep(350);
     rec.suppress = true;
-    await page.waitForURL(/sandbox\.paypal\.com/, { timeout: 60000 });
+    await page.waitForURL(/sandbox\.paypal\.com/, { timeout: 90000, waitUntil: 'commit' });
     const pay = page.getByRole('button', { name: /Complete Purchase|Pay Now|Continue to Review Order/ }).first();
     const email = page.locator('#email, input[name="login_email"]').first();
     await Promise.race([pay.waitFor({ timeout: 90000 }), email.waitFor({ timeout: 90000 })]).catch(() => undefined);
@@ -149,7 +149,7 @@ const takes = {
     await sleep(3000);
     await p.click(pay, { pause: 900 });
     rec.mark('paypal_pay');
-    await page.waitForURL(new RegExp(BASE.replace(/[.:/]/g, '\\$&') + '/proposals/'), { timeout: 90000 });
+    await page.waitForURL(new RegExp(BASE.replace(/[.:/]/g, '\\$&') + '/proposals/'), { timeout: 120000, waitUntil: 'commit' });
     await page.getByRole('button', { name: /^Capture \$89\.00/ }).waitFor({ timeout: 60000 });
     rec.mark('verified');
     await sleep(900);

@@ -6,18 +6,17 @@ set -u
 cd "$(dirname "$0")"
 PY=../../backend/venv/Scripts/python
 
-cleanup() {
-  $PY - <<'PYEOF'
-import sqlite3
+cleanup() {  # removes only what the failed attempt created (proposals newer than $ATTEMPT_START)
+  ATTEMPT_START="$ATTEMPT_START" $PY - <<'PYEOF'
+import os, sqlite3
 c = sqlite3.connect("pact-demo.db", timeout=20)
-ids = [r[0] for r in c.execute(
-    "SELECT id FROM proposals WHERE status IN ('AWAITING_HUMAN_APPROVAL','HUMAN_APPROVED','APPROVAL_EXPIRED') "
-    "AND created_at >= datetime('now','-10 minutes')")]
+ids = [r[0] for r in c.execute("SELECT id FROM proposals WHERE status != 'CAPTURED' AND created_at >= ?",
+                               (os.environ["ATTEMPT_START"],))]
 for i in ids:
     c.execute("DELETE FROM audit_logs WHERE entity_id = ?", (i,))
     c.execute("DELETE FROM proposals WHERE id = ?", (i,))
 c.commit()
-print(f"  removed {len(ids)} unfinished proposal(s) from the failed attempt")
+print(f"  removed {len(ids)} proposal(s) created by the failed attempt")
 PYEOF
 }
 
@@ -25,6 +24,7 @@ record() {  # record <take> <done-marker> [extra args]
   local take=$1 marker=$2; shift 2
   for attempt in 1 2 3 4 5 6; do
     echo "=== $take attempt $attempt"
+    ATTEMPT_START=$($PY -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'))")
     node record.mjs "$take" "$@" 2>&1 | tail -4
     if grep -q "\"name\": \"$marker\"" "frames/$take/frames.json" 2>/dev/null; then return 0; fi
     cleanup

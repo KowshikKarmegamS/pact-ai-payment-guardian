@@ -113,5 +113,11 @@ Stop it before using port 8000 for the new build.
 - Voice models: lines 01-04 and 05 from `gemini-3.8-flash-tts`; 06-14 and 14b/14c/15 from
   `gemini-3.8-flash-lite-tts` (both free-tier daily limits were reached). Not listened to by a human yet.
 - Demo DB backup before the agent scenes: `demo/tools/pact-demo.db.bak-before-agents` (git-ignored).
-- Old app takes (app1-app3) still show the earlier sidebar labels ("Command Center", "AI Payment Guardian");
-  re-recording them needs the PayPal Sandbox buyer signed in to the recorder profile.
+- All four app takes were re-recorded on a clean demo database with the new Control Center labels:
+  blocked $125 NuPhy, $89 Keychron paid via PayPal Sandbox (order `1TB76166AJ238330L`, capture `7HT24116Y1448214M`,
+  COMPLETED), second approval voided by a $99.50 price change, then the MCP agent's Sony request (blocked) and
+  USB-C hub request (awaiting approval). Recommendations: `gemini-3.5-flash` (Google reports `gemini-3.6-flash`).
+- The PayPal checkout in the recording still says "Cancel and return to PACT AI Payment Guardian"; the order
+  `brand_name` is now "PACT Authorization Gateway" for future orders.
+- `run_takes.sh` cleanup now removes only proposals created by the failed attempt (it used to remove anything from
+  the last 10 minutes). Free-tier Gemini text quota is 20 requests/day per model; the takes need several.

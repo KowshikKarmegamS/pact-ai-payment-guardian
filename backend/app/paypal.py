@@ -261,7 +261,7 @@ async def create_order(
         "payment_source": {
             "paypal": {
                 "experience_context": {
-                    "brand_name": "PACT AI Payment Guardian",
+                    "brand_name": "PACT Authorization Gateway",
                     "user_action": "PAY_NOW",
                     "shipping_preference": "NO_SHIPPING",
                     "return_url": return_url,
