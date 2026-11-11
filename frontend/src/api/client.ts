@@ -1,83 +1,81 @@
 export class ApiError extends Error {
   status: number;
+  code: string | null;
   data: unknown;
 
-  constructor(message: string, status: number, data?: unknown) {
+  constructor(message: string, status: number, code: string | null = null, data?: unknown) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
     this.data = data;
   }
 }
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
-async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = endpoint.startsWith('http') ? endpoint : `${BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
-
-  const headers = new Headers(options.headers || {});
-  if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
-    headers.set('Content-Type', 'application/json');
+function extractError(data: unknown, fallback: string): { message: string; code: string | null } {
+  if (typeof data === 'object' && data !== null && 'detail' in data) {
+    const detail = (data as { detail: unknown }).detail;
+    if (typeof detail === 'string') return { message: detail, code: null };
+    if (typeof detail === 'object' && detail !== null && 'message' in detail) {
+      const d = detail as { message: unknown; code?: unknown };
+      return { message: String(d.message), code: typeof d.code === 'string' ? d.code : null };
+    }
+    if (Array.isArray(detail)) {
+      return {
+        message: detail
+          .map((e) => (typeof e === 'object' && e && 'msg' in e ? String((e as { msg: unknown }).msg) : String(e)))
+          .join('; '),
+        code: 'VALIDATION_ERROR',
+      };
+    }
   }
+  return { message: fallback, code: null };
+}
+
+async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const url = `${BASE_URL}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+  const headers = new Headers(options.headers || {});
+  if (options.body !== undefined) headers.set('Content-Type', 'application/json');
   headers.set('Accept', 'application/json');
 
+  let response: Response;
   try {
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
-
-    let responseData: unknown = null;
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      responseData = await response.json();
-    } else {
-      const text = await response.text();
-      try {
-        responseData = JSON.parse(text);
-      } catch {
-        responseData = text;
-      }
-    }
-
-    if (!response.ok) {
-      const errorMessage =
-        typeof responseData === 'object' && responseData !== null && 'detail' in responseData
-          ? String((responseData as { detail: unknown }).detail)
-          : response.statusText || 'API request failed';
-      throw new ApiError(errorMessage, response.status, responseData);
-    }
-
-    return responseData as T;
-  } catch (error) {
-    if (error instanceof ApiError) {
-      throw error;
-    }
-    const message = error instanceof Error ? error.message : 'Network error';
-    throw new ApiError(message, 0);
+    response = await fetch(url, { ...options, headers });
+  } catch {
+    throw new ApiError('Cannot reach the PACT backend. Is the API server running?', 0, 'NETWORK');
   }
+
+  const text = await response.text();
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+
+  if (!response.ok) {
+    const { message, code } = extractError(data, response.statusText || `Request failed (${response.status})`);
+    throw new ApiError(message, response.status, code, data);
+  }
+  return data as T;
 }
 
 export const api = {
-  get: <T>(endpoint: string, options?: RequestInit): Promise<T> =>
-    request<T>(endpoint, { ...options, method: 'GET' }),
-
-  post: <T>(endpoint: string, body?: unknown, options?: RequestInit): Promise<T> =>
-    request<T>(endpoint, {
-      ...options,
-      method: 'POST',
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    }),
-
-  put: <T>(endpoint: string, body?: unknown, options?: RequestInit): Promise<T> =>
-    request<T>(endpoint, {
-      ...options,
-      method: 'PUT',
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    }),
-
-  delete: <T>(endpoint: string, options?: RequestInit): Promise<T> =>
-    request<T>(endpoint, { ...options, method: 'DELETE' }),
+  get: <T>(endpoint: string): Promise<T> => request<T>(endpoint, { method: 'GET' }),
+  post: <T>(endpoint: string, body?: unknown): Promise<T> =>
+    request<T>(endpoint, { method: 'POST', body: body !== undefined ? JSON.stringify(body) : undefined }),
+  put: <T>(endpoint: string, body?: unknown): Promise<T> =>
+    request<T>(endpoint, { method: 'PUT', body: body !== undefined ? JSON.stringify(body) : undefined }),
 };
+
+export function errorMessage(err: unknown): string {
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof Error) return err.message;
+  return 'Unexpected error';
+}
 
 export default api;

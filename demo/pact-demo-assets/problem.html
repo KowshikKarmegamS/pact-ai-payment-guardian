@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>The problem</title>
+<link rel="stylesheet" href="card.css" />
+<style>
+  .beat { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 160px; }
+  h2 { font-size: 92px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.12; }
+  .sub { margin-top: 34px; font-size: 38px; color: #98a2b6; line-height: 1.4; max-width: 1300px; }
+
+  /* Beat 1: agent -> cart -> card */
+  .flow { display: flex; align-items: center; gap: 34px; margin-bottom: 78px; }
+  .node { width: 170px; height: 170px; border-radius: 40px; border: 1.5px solid #2c3648; background: #10141d; display: flex; align-items: center; justify-content: center; }
+  .node svg { width: 76px; height: 76px; stroke: #7c8cff; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .wire { width: 150px; height: 2px; background: #2c3648; position: relative; overflow: hidden; }
+  .wire::after { content: ""; position: absolute; inset: 0; width: 40%; background: linear-gradient(90deg, transparent, #7c8cff, transparent); animation: run 1.5s linear infinite; }
+  @keyframes run { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
+
+  /* Beat 2: the card with no limit, and what can go wrong */
+  .risk { display: grid; grid-template-columns: 560px 1fr; gap: 90px; align-items: center; text-align: left; width: 1500px; }
+  .card { height: 340px; border-radius: 30px; padding: 40px; background: linear-gradient(135deg, #1b2233, #131824); border: 1.5px solid #2c3648; position: relative; box-shadow: 0 40px 90px rgba(0, 0, 0, 0.5); }
+  .chip { width: 76px; height: 56px; border-radius: 12px; background: linear-gradient(135deg, #d8b46a, #a88443); }
+  .num { margin-top: 62px; font-size: 32px; letter-spacing: 0.1em; color: #c9d1e2; white-space: nowrap; }
+  .lim { position: absolute; right: 36px; top: 40px; font-size: 22px; padding: 8px 16px; border-radius: 10px; color: #f87171; background: rgba(248, 113, 113, 0.1); border: 1.5px solid rgba(248, 113, 113, 0.35); }
+  .who { position: absolute; left: 40px; bottom: 36px; font-size: 22px; color: #66718a; letter-spacing: 0.2em; text-transform: uppercase; }
+  .threat { display: flex; align-items: center; gap: 22px; font-size: 44px; font-weight: 500; margin: 24px 0; }
+  .dot { width: 16px; height: 16px; border-radius: 50%; background: #f87171; box-shadow: 0 0 0 8px rgba(248, 113, 113, 0.14); flex-shrink: 0; }
+  .threat small { display: block; font-size: 26px; font-weight: 400; color: #98a2b6; margin-top: 4px; }
+  .red { color: #f87171; }
+</style>
+</head>
+<body data-seconds="16">
+  <div class="glow"></div><div class="grid"></div>
+
+  <section class="beat" id="b1">
+    <div class="flow fade" style="animation-delay:.3s">
+      <div class="node"><svg viewBox="0 0 24 24"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2M20 14h2M15 13v2M9 13v2"/></svg></div>
+      <div class="wire"></div>
+      <div class="node"><svg viewBox="0 0 24 24"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg></div>
+      <div class="wire"></div>
+      <div class="node"><svg viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg></div>
+    </div>
+    <h2 class="in" style="animation-delay:.8s">AI agents can now <span class="accent">shop for us.</span></h2>
+    <p class="sub in" style="animation-delay:1.8s">They find the product, compare options and are ready to check out.</p>
+  </section>
+
+  <section class="beat" id="b2" style="opacity:0">
+    <div class="risk">
+      <div class="card in" id="cc">
+        <div class="chip"></div>
+        <div class="lim">LIMIT: NONE</div>
+        <div class="num mono">•••• •••• •••• 4242</div>
+        <div class="who">held by: ai agent</div>
+      </div>
+      <div>
+        <div class="threat in" id="t1"><span class="dot"></span><div>Prompt injection<small>a product listing that gives the agent orders</small></div></div>
+        <div class="threat in" id="t2"><span class="dot"></span><div>Hallucinated prices<small>the model's reasoning is not proof</small></div></div>
+        <div class="threat in" id="t3"><span class="dot"></span><div>No approval step<small>money moves before you see it</small></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="beat" id="b3" style="opacity:0">
+    <h2 class="in" id="q">Should an AI have<br /><span class="red">unrestricted access</span> to your money?</h2>
+  </section>
+
+<script>
+  const show = (id) => { const el = document.getElementById(id); el.style.transition = 'opacity .7s ease'; el.style.opacity = 1; };
+  const hide = (id) => { const el = document.getElementById(id); el.style.transition = 'opacity .6s ease'; el.style.opacity = 0; };
+  ['cc', 't1', 't2', 't3', 'q'].forEach((id) => { document.getElementById(id).style.animationPlayState = 'paused'; });
+  const play = (id, at) => setTimeout(() => { document.getElementById(id).style.animationPlayState = 'running'; }, at);
+  setTimeout(() => hide('b1'), 3700);
+  setTimeout(() => show('b2'), 4200);
+  play('cc', 4300); play('t1', 6500); play('t2', 8000); play('t3', 9900);
+  setTimeout(() => hide('b2'), 12600);
+  setTimeout(() => show('b3'), 13100);
+  play('q', 13200);
+</script>
+</body>
+</html>

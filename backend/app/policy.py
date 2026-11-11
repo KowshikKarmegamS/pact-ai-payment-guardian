@@ -1,16 +1,24 @@
 """Deterministic policy evaluation engine for payment proposals.
 
-Enforces spending mandates, merchant whitelists, category restrictions,
-budget constraints, stock availability, and fine-grained purchase restrictions.
+This module is the sole authorization authority in PACT. It is pure: no database,
+no network, no AI. Given a mandate and a proposal it returns the same decision
+every time, with a per-rule explanation that powers the Authorization Receipt.
+
+AI-produced text (reasoning, product descriptions) is never an input here.
 """
 
-from decimal import Decimal, InvalidOperation
-from typing import Any, List, Optional
-from app.schemas import PolicyResult
+from datetime import datetime, timezone
+from decimal import Decimal
+from typing import Any, Dict, List, Optional
+
+from app.money import fmt, q, to_decimal
+from app.schemas import PolicyCheck, PolicyResult
+
+# Hard ceiling regardless of mandate: an agent may never order more than this.
+MAX_QUANTITY_HARD_LIMIT = 20
 
 
-def _extract_val(obj: Any, key: str, default: Any = None) -> Any:
-    """Safely extract an attribute or dictionary key from an object."""
+def _val(obj: Any, key: str, default: Any = None) -> Any:
     if obj is None:
         return default
     if isinstance(obj, dict):
@@ -18,14 +26,10 @@ def _extract_val(obj: Any, key: str, default: Any = None) -> Any:
     return getattr(obj, key, default)
 
 
-def _to_decimal(val: Any, default: Decimal = Decimal("0.00")) -> Decimal:
-    """Safely convert any numeric value to Decimal."""
-    if val is None:
-        return default
-    try:
-        return Decimal(str(val))
-    except (InvalidOperation, TypeError, ValueError):
-        return default
+def _clean_list(values: Any) -> List[str]:
+    if not isinstance(values, (list, tuple)):
+        return []
+    return [str(v).strip() for v in values if str(v).strip()]
 
 
 class PolicyEngine:
@@ -37,170 +41,250 @@ class PolicyEngine:
         proposal: Any,
         remaining_budget: Optional[Decimal] = None,
         product: Optional[Any] = None,
+        expected_currency: Optional[str] = None,
+        now: Optional[datetime] = None,
     ) -> PolicyResult:
-        """Evaluate a proposal against mandate policies.
-
-        All rules are evaluated deterministically and all violations are collected.
-
-        Checks performed:
-        1. Is mandate active?
-        2. Is merchant in allowed_merchants?
-        3. Is category in allowed_categories?
-        4. Is total_amount <= remaining budget?
-        5. Is product in stock?
-        6. Does it violate any fine-grained restrictions?
+        """Evaluate every rule and collect all results (no short-circuit).
 
         Args:
-            mandate: Mandate ORM object, Pydantic schema, or dict.
-            proposal: Proposal ORM object, Pydantic schema, or dict.
-            remaining_budget: Optional remaining budget; if omitted, checks
-                              mandate.remaining_budget or mandate.max_budget.
-            product: Optional Product object; if omitted, checks proposal.product
-                     or proposal.in_stock.
-
-        Returns:
-            PolicyResult indicating pass/fail status and all violations found.
+            mandate: Mandate ORM object, schema or dict.
+            proposal: Proposal ORM object, schema or dict.
+            remaining_budget: Budget available to *this* proposal. If omitted,
+                mandate.remaining_budget or mandate.max_budget is used.
+            product: Catalog product for stock checks (falls back to proposal.product).
+            expected_currency: The configured system currency.
         """
-        violations: List[str] = []
+        checks: List[PolicyCheck] = []
 
-        # ---------------------------------------------------------------------
-        # 1. Mandate Active Check
-        # ---------------------------------------------------------------------
-        is_active = _extract_val(mandate, "is_active", True)
-        if not is_active:
-            violations.append("Mandate is inactive.")
+        def add(rule: str, label: str, passed: bool, detail: str) -> None:
+            checks.append(PolicyCheck(rule=rule, label=label, passed=passed, detail=detail))
 
-        # ---------------------------------------------------------------------
-        # Extract proposal attributes
-        # ---------------------------------------------------------------------
-        p_merchant = str(_extract_val(proposal, "merchant", "")).strip()
-        p_category = str(_extract_val(proposal, "category", "")).strip()
-        p_product_name = str(_extract_val(proposal, "product_name", "Unknown Product")).strip()
-        p_quantity = int(_extract_val(proposal, "quantity", 1))
+        currency = str(_val(mandate, "currency", None) or expected_currency or "USD").upper()
+        p_currency = str(_val(proposal, "currency", None) or currency).upper()
 
-        # Price and total amount resolution
-        p_price = _to_decimal(_extract_val(proposal, "price", Decimal("0.00")))
-        p_total = _extract_val(proposal, "total_amount", None)
-        if p_total is not None:
-            p_total_amount = _to_decimal(p_total)
-        else:
-            p_total_amount = p_price * Decimal(p_quantity)
+        # 1. Mandate active
+        is_active = bool(_val(mandate, "is_active", True))
+        add(
+            "mandate_active",
+            "Mandate is active",
+            is_active,
+            "Mandate is active." if is_active else "Mandate is inactive.",
+        )
 
-        # ---------------------------------------------------------------------
-        # 2. Merchant Whitelist Check
-        # ---------------------------------------------------------------------
-        allowed_merchants = _extract_val(mandate, "allowed_merchants", []) or []
-        allowed_merchants_clean = [str(m).strip() for m in allowed_merchants if str(m).strip()]
-        allowed_merchants_lower = [m.lower() for m in allowed_merchants_clean]
-
-        if not p_merchant or p_merchant.lower() not in allowed_merchants_lower:
-            allowed_str = ", ".join(allowed_merchants_clean) if allowed_merchants_clean else "None"
-            violations.append(
-                f"Merchant '{p_merchant}' is not permitted by mandate. Allowed: [{allowed_str}]."
+        # 1b. Mandate expiry (only when the user set one)
+        expires_at = _val(mandate, "expires_at", None)
+        if isinstance(expires_at, datetime):
+            exp = expires_at.replace(tzinfo=timezone.utc) if expires_at.tzinfo is None else expires_at
+            current = now or datetime.now(timezone.utc)
+            current = current.replace(tzinfo=timezone.utc) if current.tzinfo is None else current
+            not_expired = current < exp
+            stamp = exp.strftime("%Y-%m-%d %H:%M UTC")
+            add(
+                "mandate_not_expired",
+                "Mandate has not expired",
+                not_expired,
+                f"Mandate is valid until {stamp}." if not_expired else f"Mandate expired on {stamp}.",
             )
 
-        # ---------------------------------------------------------------------
-        # 3. Category Whitelist Check
-        # ---------------------------------------------------------------------
-        allowed_categories = _extract_val(mandate, "allowed_categories", []) or []
-        allowed_categories_clean = [str(c).strip() for c in allowed_categories if str(c).strip()]
-        allowed_categories_lower = [c.lower() for c in allowed_categories_clean]
+        p_merchant = str(_val(proposal, "merchant", "") or "").strip()
+        p_category = str(_val(proposal, "category", "") or "").strip()
+        p_name = str(_val(proposal, "product_name", "") or "Unknown Product").strip()
+        raw_qty = _val(proposal, "quantity", 1)
+        try:
+            p_qty = int(raw_qty)
+        except (TypeError, ValueError):
+            p_qty = 0
+        p_price = q(_val(proposal, "price", "0"))
+        raw_total = _val(proposal, "total_amount", None)
+        p_total = q(raw_total) if raw_total is not None else q(p_price * Decimal(max(p_qty, 0)))
 
-        if not p_category or p_category.lower() not in allowed_categories_lower:
-            allowed_str = ", ".join(allowed_categories_clean) if allowed_categories_clean else "None"
-            violations.append(
-                f"Category '{p_category}' is not permitted by mandate. Allowed: [{allowed_str}]."
+        # 2. Currency consistency
+        currency_ok = p_currency == currency and (expected_currency is None or currency == expected_currency.upper())
+        add(
+            "currency",
+            "Currency matches mandate",
+            currency_ok,
+            f"Proposal currency {p_currency} matches mandate currency {currency}."
+            if currency_ok
+            else f"Currency mismatch: proposal is {p_currency}, mandate is {currency}"
+            + (f", system is {expected_currency.upper()}." if expected_currency else "."),
+        )
+
+        # 3. Quantity bounds
+        restrictions = _val(mandate, "restrictions", {}) or {}
+        if not isinstance(restrictions, dict):
+            restrictions = {}
+        max_qty_raw = restrictions.get("max_quantity")
+        max_qty = MAX_QUANTITY_HARD_LIMIT
+        if max_qty_raw is not None:
+            try:
+                max_qty = min(int(max_qty_raw), MAX_QUANTITY_HARD_LIMIT)
+            except (TypeError, ValueError):
+                pass
+        qty_ok = isinstance(raw_qty, int) and not isinstance(raw_qty, bool) and 1 <= p_qty <= max_qty
+        add(
+            "quantity",
+            "Quantity within limits",
+            qty_ok,
+            f"Quantity {p_qty} is within the allowed range 1–{max_qty}."
+            if qty_ok
+            else (
+                f"Quantity {raw_qty} exceeds maximum allowed quantity of {max_qty}."
+                if p_qty > max_qty
+                else f"Quantity {raw_qty} is invalid; it must be a whole number from 1 to {max_qty}."
+            ),
+        )
+
+        # 4. Amount integrity (total must equal unit price x quantity, and be positive)
+        expected_total = q(p_price * Decimal(max(p_qty, 0)))
+        amount_ok = p_price > 0 and p_total > 0 and p_total == expected_total
+        add(
+            "amount_integrity",
+            "Total equals price × quantity",
+            amount_ok,
+            f"{fmt(p_price, currency)} × {p_qty} = {fmt(p_total, currency)}."
+            if amount_ok
+            else f"Amount inconsistency: {fmt(p_price, currency)} × {p_qty} = {fmt(expected_total, currency)}, "
+            f"but proposal total is {fmt(p_total, currency)}.",
+        )
+
+        # 5. Merchant allowlist
+        allowed_merchants = _clean_list(_val(mandate, "allowed_merchants", []))
+        merchant_ok = bool(p_merchant) and p_merchant.lower() in {m.lower() for m in allowed_merchants}
+        add(
+            "merchant_allowlist",
+            "Merchant is on the allowlist",
+            merchant_ok,
+            f"Merchant '{p_merchant}' is on the allowlist."
+            if merchant_ok
+            else f"Merchant '{p_merchant}' is not permitted by mandate. Allowed: [{', '.join(allowed_merchants) or 'None'}].",
+        )
+
+        # 6. Merchant blocklist
+        blocked_merchants = _clean_list(restrictions.get("prohibited_merchants", []))
+        if blocked_merchants:
+            blocked = p_merchant.lower() in {m.lower() for m in blocked_merchants}
+            add(
+                "merchant_blocklist",
+                "Merchant is not blocked",
+                not blocked,
+                f"Merchant '{p_merchant}' is explicitly blocked by mandate restrictions."
+                if blocked
+                else f"Merchant '{p_merchant}' is not on the blocklist.",
             )
 
-        # ---------------------------------------------------------------------
-        # 4. Budget Constraint Check
-        # ---------------------------------------------------------------------
+        # 7. Category allowlist
+        allowed_categories = _clean_list(_val(mandate, "allowed_categories", []))
+        category_ok = bool(p_category) and p_category.lower() in {c.lower() for c in allowed_categories}
+        add(
+            "category_allowlist",
+            "Category is on the allowlist",
+            category_ok,
+            f"Category '{p_category}' is on the allowlist."
+            if category_ok
+            else f"Category '{p_category}' is not permitted by mandate. Allowed: [{', '.join(allowed_categories) or 'None'}].",
+        )
+
+        # 8. Max unit price
+        max_item = restrictions.get("max_price_per_item", restrictions.get("max_item_price"))
+        if max_item is not None:
+            max_item_dec = q(max_item)
+            ok = p_price <= max_item_dec
+            add(
+                "max_unit_price",
+                "Unit price within limit",
+                ok,
+                f"Unit price {fmt(p_price, currency)} is within the {fmt(max_item_dec, currency)} limit."
+                if ok
+                else f"Item unit price {fmt(p_price, currency)} exceeds maximum allowed limit of {fmt(max_item_dec, currency)}.",
+            )
+
+        # 9. Min unit price
+        min_item = restrictions.get("min_price_per_item", restrictions.get("min_item_price"))
+        if min_item is not None:
+            min_item_dec = q(min_item)
+            ok = p_price >= min_item_dec
+            add(
+                "min_unit_price",
+                "Unit price above minimum",
+                ok,
+                f"Unit price {fmt(p_price, currency)} meets the {fmt(min_item_dec, currency)} minimum."
+                if ok
+                else f"Item unit price {fmt(p_price, currency)} is below minimum allowed limit of {fmt(min_item_dec, currency)}.",
+            )
+
+        # 10. Prohibited keywords (product name and category; never AI text)
+        keywords = _clean_list(restrictions.get("prohibited_keywords", []))
+        if keywords:
+            haystack = f"{p_name} {p_category}".lower()
+            hits = [kw for kw in keywords if kw.lower() in haystack]
+            add(
+                "prohibited_keywords",
+                "No prohibited keywords",
+                not hits,
+                "No prohibited keywords found in product name or category."
+                if not hits
+                else " ".join(f"Product contains prohibited keyword: '{h}'." for h in hits),
+            )
+
+        # 11. Budget
         if remaining_budget is not None:
-            effective_budget = _to_decimal(remaining_budget)
+            budget = q(remaining_budget)
         else:
-            mandate_rem = _extract_val(mandate, "remaining_budget", None)
-            if mandate_rem is not None:
-                effective_budget = _to_decimal(mandate_rem)
-            else:
-                effective_budget = _to_decimal(_extract_val(mandate, "max_budget", Decimal("0.00")))
+            rem = _val(mandate, "remaining_budget", None)
+            budget = q(rem) if rem is not None else q(_val(mandate, "max_budget", "0"))
+        budget_ok = p_total <= budget
+        add(
+            "budget",
+            "Within available budget",
+            budget_ok,
+            f"Total {fmt(p_total, currency)} fits within the remaining budget of {fmt(budget, currency)}."
+            if budget_ok
+            else f"Total amount {fmt(p_total, currency)} exceeds remaining mandate budget of {fmt(budget, currency)}.",
+        )
 
-        if p_total_amount > effective_budget:
-            violations.append(
-                f"Total amount ${p_total_amount:.2f} exceeds remaining mandate budget of ${effective_budget:.2f}."
-            )
+        # 12. Stock
+        stock_src = product if product is not None else _val(proposal, "product", None)
+        in_stock = bool(_val(stock_src, "in_stock", True)) if stock_src is not None else bool(_val(proposal, "in_stock", True))
+        add(
+            "in_stock",
+            "Product is in stock",
+            in_stock,
+            f"'{p_name}' is in stock." if in_stock else f"Product '{p_name}' is currently out of stock.",
+        )
 
-        # ---------------------------------------------------------------------
-        # 5. Stock Availability Check
-        # ---------------------------------------------------------------------
-        # Priority order: explicitly passed product -> proposal.product -> proposal.in_stock
-        stock_status = True
-        if product is not None:
-            stock_status = bool(_extract_val(product, "in_stock", True))
-        else:
-            nested_product = _extract_val(proposal, "product", None)
-            if nested_product is not None:
-                stock_status = bool(_extract_val(nested_product, "in_stock", True))
-            else:
-                stock_status = bool(_extract_val(proposal, "in_stock", True))
+        # Attach "what the proposal has" vs "what the mandate allows" for the authorization screen.
+        scope = locals()
+        facts: Dict[str, tuple] = {
+            "merchant_allowlist": (p_merchant or "none", ", ".join(allowed_merchants) or "none"),
+            "category_allowlist": (p_category or "none", ", ".join(allowed_categories) or "none"),
+            "budget": (fmt(p_total, currency), f"{fmt(budget, currency)} available"),
+            "quantity": (str(raw_qty), f"1 to {max_qty}"),
+            "amount_integrity": (fmt(p_total, currency), fmt(expected_total, currency)),
+            "currency": (p_currency, currency),
+        }
+        if "max_item_dec" in scope:
+            facts["max_unit_price"] = (fmt(p_price, currency), f"up to {fmt(scope['max_item_dec'], currency)}")
+        if "min_item_dec" in scope:
+            facts["min_unit_price"] = (fmt(p_price, currency), f"at least {fmt(scope['min_item_dec'], currency)}")
+        if blocked_merchants:
+            facts["merchant_blocklist"] = (p_merchant or "none", "not " + ", ".join(blocked_merchants))
+        if keywords:
+            facts["prohibited_keywords"] = (p_name, "must not contain " + ", ".join(keywords))
+        for c in checks:
+            if c.rule in facts:
+                c.actual, c.limit = facts[c.rule]
 
-        if not stock_status:
-            violations.append(f"Product '{p_product_name}' is currently out of stock.")
-
-        # ---------------------------------------------------------------------
-        # 6. Fine-grained Restrictions Check
-        # ---------------------------------------------------------------------
-        restrictions = _extract_val(mandate, "restrictions", {}) or {}
-        if isinstance(restrictions, dict):
-            # Maximum price per item
-            max_item_price = restrictions.get("max_price_per_item") or restrictions.get("max_item_price")
-            if max_item_price is not None:
-                max_price_dec = _to_decimal(max_item_price)
-                if p_price > max_price_dec:
-                    violations.append(
-                        f"Item unit price ${p_price:.2f} exceeds maximum allowed limit of ${max_price_dec:.2f}."
-                    )
-
-            # Minimum price per item
-            min_item_price = restrictions.get("min_price_per_item") or restrictions.get("min_item_price")
-            if min_item_price is not None:
-                min_price_dec = _to_decimal(min_item_price)
-                if p_price < min_price_dec:
-                    violations.append(
-                        f"Item unit price ${p_price:.2f} is below minimum allowed limit of ${min_price_dec:.2f}."
-                    )
-
-            # Maximum quantity limit
-            max_qty = restrictions.get("max_quantity")
-            if max_qty is not None and p_quantity > int(max_qty):
-                violations.append(
-                    f"Quantity {p_quantity} exceeds maximum allowed quantity of {max_qty}."
-                )
-
-            # Prohibited keywords in product name
-            prohibited_keywords = restrictions.get("prohibited_keywords", [])
-            if isinstance(prohibited_keywords, list):
-                name_lower = p_product_name.lower()
-                for kw in prohibited_keywords:
-                    kw_clean = str(kw).strip().lower()
-                    if kw_clean and kw_clean in name_lower:
-                        violations.append(
-                            f"Product name contains prohibited keyword: '{kw}'."
-                        )
-
-            # Prohibited merchants
-            prohibited_merchants = restrictions.get("prohibited_merchants", [])
-            if isinstance(prohibited_merchants, list):
-                prohibited_lower = [str(m).strip().lower() for m in prohibited_merchants]
-                if p_merchant.lower() in prohibited_lower:
-                    violations.append(
-                        f"Merchant '{p_merchant}' is explicitly blocked by mandate restrictions."
-                    )
-
-        passed = len(violations) == 0
-        return PolicyResult(passed=passed, violations=violations)
+        violations = [c.detail for c in checks if not c.passed]
+        return PolicyResult(
+            passed=not violations,
+            violations=violations,
+            checks=checks,
+            remaining_budget=budget,
+            currency=currency,
+        )
 
 
-# Convenient module-level singleton instance and function
 policy_engine = PolicyEngine()
 
 
@@ -209,6 +293,8 @@ def evaluate_policy(
     proposal: Any,
     remaining_budget: Optional[Decimal] = None,
     product: Optional[Any] = None,
+    expected_currency: Optional[str] = None,
+    now: Optional[datetime] = None,
 ) -> PolicyResult:
     """Evaluate a proposal against mandate policies using the global PolicyEngine."""
     return policy_engine.evaluate(
@@ -216,4 +302,13 @@ def evaluate_policy(
         proposal=proposal,
         remaining_budget=remaining_budget,
         product=product,
+        expected_currency=expected_currency,
+        now=now,
     )
+
+
+def checks_to_json(result: PolicyResult) -> List[Dict[str, Any]]:
+    return [c.model_dump() for c in result.checks]
+
+
+__all__ = ["PolicyEngine", "evaluate_policy", "checks_to_json", "MAX_QUANTITY_HARD_LIMIT", "to_decimal"]

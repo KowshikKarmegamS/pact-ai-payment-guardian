@@ -1,263 +1,153 @@
-import React, { useState } from 'react';
-import {
-  CreditCard,
-  Search,
-  CheckCircle,
-  Clock,
-  XCircle,
-  Filter,
-} from 'lucide-react';
-import { Proposal, ProposalStatus } from '../types';
-import { mockProposals } from '../data/mockData';
+import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { ChevronRight, Search } from 'lucide-react';
+import { pactApi } from '../api/pact';
+import { ProductTile } from '../components/ProductTile';
+import { Card, EmptyState, ErrorState, Mono, PageHeader, RefreshButton, Segmented, SkeletonRows, StatusPill, cx, inputClass } from '../components/ui';
+import { dateTime, money, shortId, statusMeta, toNumber, type StatusGroup } from '../lib/format';
+import { useAsync } from '../lib/useAsync';
+import type { Proposal } from '../types';
+
+type Filter = 'all' | StatusGroup;
+
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'awaiting', label: 'Awaiting approval' },
+  { value: 'paypal', label: 'In PayPal flow' },
+  { value: 'captured', label: 'Captured' },
+  { value: 'blocked', label: 'Blocked' },
+  { value: 'closed', label: 'Failed · cancelled · expired' },
+];
 
 export const Transactions: React.FC = () => {
-  const [proposals] = useState<Proposal[]>(mockProposals);
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
-
-  const filteredProposals = proposals.filter((p) => {
-    const matchesStatus = filterStatus === 'all' || p.status === filterStatus;
-    const matchesSearch =
-      p.product_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.merchant.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.id.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesStatus && matchesSearch;
+  const navigate = useNavigate();
+  const state = useAsync(async () => {
+    const [proposals, mandates] = await Promise.all([pactApi.getProposals(), pactApi.getMandates()]);
+    return { proposals, names: Object.fromEntries(mandates.map((m) => [m.id, m.name])) as Record<string, string> };
   });
+  const [filter, setFilter] = useState<Filter>('all');
+  const [query, setQuery] = useState('');
 
-  const getStatusBadge = (status: ProposalStatus) => {
-    switch (status) {
-      case 'pending':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
-            <Clock className="w-3 h-3 text-amber-500" />
-            Pending
-          </span>
-        );
-      case 'approved':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <CheckCircle className="w-3 h-3 text-emerald-500" />
-            Approved
-          </span>
-        );
-      case 'captured':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-            <CreditCard className="w-3 h-3 text-blue-500" />
-            Captured
-          </span>
-        );
-      case 'rejected':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
-            <XCircle className="w-3 h-3 text-rose-500" />
-            Rejected
-          </span>
-        );
-    }
-  };
+  const counts = useMemo(() => {
+    const c: Record<string, number> = { all: 0 };
+    state.data?.proposals.forEach((p) => {
+      c.all += 1;
+      const g = statusMeta(p.status).group;
+      c[g] = (c[g] ?? 0) + 1;
+    });
+    return c;
+  }, [state.data]);
+
+  const rows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (state.data?.proposals ?? []).filter((p: Proposal) => {
+      if (filter !== 'all' && statusMeta(p.status).group !== filter) return false;
+      if (!q) return true;
+      return [p.id, p.product_name, p.merchant, p.paypal_order_id, p.paypal_capture_id, state.data?.names[p.mandate_id]].some((v) => v && String(v).toLowerCase().includes(q));
+    });
+  }, [state.data, filter, query]);
+
+  const capturedTotal = useMemo(() => rows.filter((p) => p.status === 'CAPTURED').reduce((s, p) => s + toNumber(p.captured_amount ?? p.total_amount), 0), [rows]);
+  const open = (id: string) => navigate(`/proposals/${id}`);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">
-            Transaction & Proposal Ledger
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Immutable log of all AI purchase proposals, policy verdicts, and PayPal payment captures.
-          </p>
-        </div>
+    <div>
+      <PageHeader
+        eyebrow="Ledger"
+        title="Transactions"
+        description="Every proposal with its policy outcome and PayPal references. Order and capture IDs appear only when PayPal returned them."
+        actions={<RefreshButton onClick={() => void state.reload()} loading={state.loading} />}
+      />
 
-        {/* Quick summary counters */}
-        <div className="flex items-center gap-2">
-          <span className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-slate-700 shadow-xs">
-            Total: {proposals.length}
-          </span>
-          <span className="px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-700">
-            Captured: {proposals.filter((p) => p.status === 'captured').length}
-          </span>
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <Segmented label="Filter by status" value={filter} onChange={setFilter} options={FILTERS.map((f) => ({ ...f, count: counts[f.value] ?? 0 }))} />
+        <div className="relative lg:w-80">
+          <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-faint" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search product, merchant, PayPal ID…" aria-label="Search transactions" className={cx(inputClass, 'pl-9')} />
         </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-          <input
-            type="text"
-            placeholder="Search proposals by product, merchant, or ID..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 focus:bg-white transition-all placeholder:text-slate-400"
-          />
-        </div>
+      {state.error && <ErrorState message={state.error} onRetry={() => void state.reload()} />}
 
-        {/* Status Filter Buttons */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
-          <Filter className="w-4 h-4 text-slate-400 mr-1 shrink-0" />
-          {['all', 'pending', 'approved', 'captured', 'rejected'].map((status) => (
-            <button
-              key={status}
-              onClick={() => setFilterStatus(status)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize whitespace-nowrap transition-colors cursor-pointer ${
-                filterStatus === status
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {status}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Transactions Table */}
-      <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                <th className="py-3.5 px-4">Proposal / ID</th>
-                <th className="py-3.5 px-4">Merchant & Category</th>
-                <th className="py-3.5 px-4">Amount</th>
-                <th className="py-3.5 px-4">Status</th>
-                <th className="py-3.5 px-4">Timestamp</th>
-                <th className="py-3.5 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 text-sm">
-              {filteredProposals.length > 0 ? (
-                filteredProposals.map((proposal) => (
-                  <tr key={proposal.id} className="hover:bg-slate-50/60 transition-colors">
-                    {/* ID & Title */}
-                    <td className="py-4 px-4">
-                      <div className="font-semibold text-slate-900">{proposal.product_name}</div>
-                      <div className="text-xs font-mono text-slate-400 mt-0.5">
-                        {proposal.id} &bull; Mandate: {proposal.mandate_id}
-                      </div>
-                    </td>
-
-                    {/* Merchant & Category */}
-                    <td className="py-4 px-4">
-                      <div className="font-medium text-slate-800">{proposal.merchant}</div>
-                      <div className="text-xs text-slate-500">{proposal.category}</div>
-                    </td>
-
-                    {/* Amount */}
-                    <td className="py-4 px-4">
-                      <div className="font-extrabold text-slate-900">
-                        ${Number(proposal.total_amount).toFixed(2)}
-                      </div>
-                      <div className="text-xs text-slate-400">Qty: {proposal.quantity}</div>
-                    </td>
-
-                    {/* Status */}
-                    <td className="py-4 px-4">{getStatusBadge(proposal.status)}</td>
-
-                    {/* Timestamp */}
-                    <td className="py-4 px-4 text-xs text-slate-500 whitespace-nowrap">
-                      {new Date(proposal.created_at).toLocaleDateString([], {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </td>
-
-                    {/* Actions */}
-                    <td className="py-4 px-4 text-right">
-                      <button
-                        onClick={() => setSelectedProposal(proposal)}
-                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
-                      >
-                        Inspect
-                      </button>
-                    </td>
+      <Card className="overflow-hidden">
+        {!state.data ? (
+          <SkeletonRows rows={6} />
+        ) : rows.length === 0 ? (
+          <EmptyState title={state.data.proposals.length ? 'No transactions match' : 'No transactions yet'} description={state.data.proposals.length ? 'Try a different filter or search.' : 'Proposals appear here as soon as the assistant makes one.'} />
+        ) : (
+          <>
+            <div className="hidden overflow-x-auto md:block">
+              <table className="min-w-full text-sm">
+                <thead className="border-b border-line text-left text-[11px] font-medium uppercase tracking-wider text-faint">
+                  <tr>
+                    <th className="px-5 py-3 font-medium">Product</th>
+                    <th className="px-4 py-3 font-medium">Transaction</th>
+                    <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 font-medium">PayPal reference</th>
+                    <th className="px-4 py-3 font-medium">Date</th>
+                    <th className="px-5 py-3 text-right font-medium">Amount</th>
+                    <th className="w-8" />
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center text-sm text-slate-500">
-                    No transactions matching your criteria.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Proposal Details Modal */}
-      {selectedProposal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 relative animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-start justify-between">
-              <div>
-                <span className="text-xs font-mono text-slate-400 font-semibold">
-                  {selectedProposal.id}
-                </span>
-                <h3 className="text-lg font-bold text-slate-900 mt-1">
-                  {selectedProposal.product_name}
-                </h3>
-              </div>
-              <div>{getStatusBadge(selectedProposal.status)}</div>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {rows.map((p) => (
+                    <tr
+                      key={p.id}
+                      tabIndex={0}
+                      onClick={() => open(p.id)}
+                      onKeyDown={(e) => e.key === 'Enter' && open(p.id)}
+                      className="group cursor-pointer transition-colors hover:bg-white/[0.03] focus-visible:bg-white/[0.04]"
+                    >
+                      <td className="max-w-xs px-5 py-3">
+                        <div className="flex items-center gap-3">
+                          <ProductTile name={p.product_name} category={p.category} size="sm" />
+                          <div className="min-w-0">
+                            <p className="truncate text-fg">{p.product_name}</p>
+                            <p className="truncate text-[11px] text-faint">{p.merchant} · qty {p.quantity} · {p.agent_name ?? 'Reference agent'}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Mono className="text-[11px] text-muted">{shortId(p.id)}</Mono>
+                        <p className="max-w-[11rem] truncate text-[11px] text-faint">{state.data?.names[p.mandate_id] ?? shortId(p.mandate_id)}</p>
+                      </td>
+                      <td className="px-4 py-3"><StatusPill status={p.status} /></td>
+                      <td className="px-4 py-3">
+                        {p.paypal_order_id ? <Mono className="text-[11px] text-muted">{p.paypal_order_id}</Mono> : <span className="text-faint">—</span>}
+                        {p.paypal_capture_id && <p><Mono className="text-[11px] text-ok">{p.paypal_capture_id}</Mono></p>}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs text-muted">{dateTime(p.created_at)}</td>
+                      <td className="px-5 py-3 text-right font-medium text-fg tnum">{money(p.total_amount, p.currency)}</td>
+                      <td className="pr-3 text-faint"><ChevronRight className="h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-
-            <div className="mt-5 space-y-4 text-xs">
-              <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 space-y-1.5">
-                <div className="flex justify-between">
-                  <span className="text-slate-500 font-medium">Merchant:</span>
-                  <span className="font-semibold text-slate-800">{selectedProposal.merchant}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500 font-medium">Category:</span>
-                  <span className="font-semibold text-slate-800">{selectedProposal.category}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500 font-medium">Price per unit:</span>
-                  <span className="font-semibold text-slate-800">${Number(selectedProposal.price).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500 font-medium">Quantity:</span>
-                  <span className="font-semibold text-slate-800">{selectedProposal.quantity}</span>
-                </div>
-                <div className="flex justify-between border-t border-slate-200 pt-1.5 font-bold text-sm">
-                  <span className="text-slate-700">Total Authorized Amount:</span>
-                  <span className="text-slate-900">${Number(selectedProposal.total_amount).toFixed(2)}</span>
-                </div>
-              </div>
-
-              <div>
-                <span className="font-bold text-slate-700 block mb-1">AI Guardian Reasoning</span>
-                <p className="text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100 italic leading-relaxed">
-                  &ldquo;{selectedProposal.ai_reasoning}&rdquo;
-                </p>
-              </div>
-
-              {selectedProposal.paypal_order_id && (
-                <div className="p-3 bg-blue-50/70 rounded-lg border border-blue-200">
-                  <span className="font-bold text-blue-900 block mb-1">PayPal Order Reference</span>
-                  <p className="font-mono text-[11px] text-blue-700">
-                    {selectedProposal.paypal_order_id}
-                  </p>
-                </div>
-              )}
+            <ul className="divide-y divide-line md:hidden">
+              {rows.map((p) => (
+                <li key={p.id}>
+                  <button onClick={() => open(p.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left">
+                    <ProductTile name={p.product_name} category={p.category} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm text-fg">{p.product_name}</p>
+                      <p className="text-[11px] text-faint">{p.merchant} · {dateTime(p.created_at)}</p>
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <span className="text-sm font-medium text-fg tnum">{money(p.total_amount, p.currency)}</span>
+                      <StatusPill status={p.status} />
+                    </div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="flex items-center justify-between border-t border-line px-5 py-3 text-xs text-faint">
+              <span>{rows.length} transaction{rows.length === 1 ? '' : 's'}</span>
+              <span>Captured in view: <span className="font-medium text-ok tnum">{money(capturedTotal, rows[0]?.currency)}</span></span>
             </div>
-
-            <div className="mt-6 flex justify-end">
-              <button
-                onClick={() => setSelectedProposal(null)}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Card>
     </div>
   );
 };

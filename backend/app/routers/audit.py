@@ -15,7 +15,7 @@ def list_audit_logs(
     entity_type: Optional[str] = Query(None, description="Filter by entity type (Mandate, Proposal)"),
     entity_id: Optional[str] = Query(None, description="Filter by entity ID"),
     event_type: Optional[str] = Query(None, description="Filter by event type"),
-    limit: int = Query(50, ge=1, le=200, description="Max records to return"),
+    limit: int = Query(100, ge=1, le=500, description="Max records to return"),
     db: Session = Depends(get_db),
 ):
     """Retrieve chronological audit trail entries (most recent first)."""
@@ -28,4 +28,4 @@ def list_audit_logs(
     if event_type:
         query = query.filter(AuditLog.event_type == event_type)
 
-    return query.order_by(AuditLog.timestamp.desc()).limit(limit).all()
+    return query.order_by(AuditLog.timestamp.desc(), AuditLog.id.desc()).limit(limit).all()

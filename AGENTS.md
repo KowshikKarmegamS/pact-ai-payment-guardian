@@ -10,7 +10,7 @@ It demonstrates the principle: **AI recommends → Deterministic code authorizes
 ```
 Frontend (React/Vite/TypeScript)
   └─► FastAPI Backend
-        ├─► AI Shopping Assistant (OpenAI API)
+        ├─► AI Shopping Assistant (Google Gemini API or OpenAI API)
         ├─► Product Catalog (SQLite)
         ├─► Deterministic Policy Engine
         ├─► Approval Workflow
@@ -25,7 +25,7 @@ Frontend (React/Vite/TypeScript)
 | Backend  | Python, FastAPI, Pydantic, SQLAlchemy   |
 | Database | SQLite                                  |
 | Frontend | React, Vite, TypeScript, Tailwind CSS   |
-| AI       | OpenAI API (configurable model)         |
+| AI       | Google Gemini Developer API (default) or OpenAI |
 | Payment  | PayPal REST API v2 (Sandbox)            |
 | Icons    | Lucide React                            |
 
@@ -41,16 +41,17 @@ pact-ai-payment-guardian/
 │   │   ├── database.py       # Database engine & session
 │   │   ├── schemas.py        # Pydantic request/response schemas
 │   │   ├── catalog.py        # Product catalog seeding
-│   │   ├── agent.py          # AI shopping assistant (OpenAI)
-│   │   ├── policy.py         # Deterministic policy engine
-│   │   ├── paypal.py         # PayPal API integration
+│   │   ├── agent.py          # AI shopping assistant (Gemini / OpenAI)
+│   │   ├── policy.py         # Deterministic policy engine (pure)
+│   │   ├── money.py          # Decimal helpers
+│   │   ├── paypal.py         # PayPal API integration (Sandbox only)
 │   │   ├── routers/          # API route handlers
 │   │   │   ├── products.py
 │   │   │   ├── mandates.py
 │   │   │   ├── proposals.py
 │   │   │   ├── payments.py
 │   │   │   └── health.py
-│   │   └── services/         # Business logic services
+│   │   └── services/         # audit, mandate budgets, authorization (fingerprint/revalidation)
 │   ├── tests/                # Pytest test suite
 │   ├── requirements.txt
 │   └── .env.example
@@ -92,23 +93,32 @@ These rules must be followed in ALL code changes:
 
 10. **PayPal Sandbox only.** Never use production PayPal endpoints.
 
-## Payment Flow
+## Payment Flow and State Machine
+
+Persisted `ProposalStatus` values (see `backend/app/models.py`):
 
 ```
-User creates spending mandate
-  → User sends shopping request to AI
-    → AI searches product catalog
-      → AI proposes a purchase
-        → Policy engine validates against mandate
-          → If violations: BLOCKED (returned to user with reasons)
-          → If passes: Proposal created with status "pending"
-            → User reviews and explicitly approves
-              → Backend revalidates mandate + amount
-                → Backend creates PayPal order
-                  → User completes PayPal checkout
-                    → Backend captures payment (with idempotency)
-                      → Audit log updated at every step
+AWAITING_HUMAN_APPROVAL -> HUMAN_APPROVED -> AWAITING_PAYPAL_BUYER_APPROVAL
+  -> PAYPAL_BUYER_APPROVED -> CAPTURE_PENDING -> CAPTURED
+Side exits: POLICY_REJECTED, HUMAN_REJECTED, PAYPAL_CANCELLED, PAYMENT_FAILED, APPROVAL_EXPIRED
 ```
+
+1. `POST /api/proposals/generate` — AI picks `{product_id, quantity}`; catalog sets price/merchant;
+   `PolicyEngine` evaluates; proposal fingerprint (SHA-256, `services/authorization.py`) stored.
+2. `POST /api/proposals/{id}/approve` with `{expected_fingerprint}` — must match; policy re-run.
+3. `POST /api/payments/{id}/create-order` — fingerprint + policy re-verified; one PayPal order per proposal.
+4. `POST /api/payments/{id}/verify` — server asks PayPal; never captures.
+5. `POST /api/payments/{id}/capture` — atomic lock, PayPal order verified (id, reference, amount,
+   currency, status APPROVED), fingerprint + policy re-verified, capture with `PayPal-Request-Id`,
+   CAPTURED only on a real capture ID with status COMPLETED and matching amount/currency.
+6. `PUT /api/mandates/{id}` — re-verifies every in-flight approval; mismatches become APPROVAL_EXPIRED.
+7. `GET /api/proposals/{id}/receipt` — Authorization Receipt from persisted data.
+
+Rules for changes:
+- Never set CAPTURED, a capture ID, or a capture status that PayPal did not return.
+- Any new field that affects what the user approved must be added to `canonical_snapshot()`.
+- Money is `Decimal` (`app/money.py`); never float.
+- Schema changes must be additive and listed in `_ADDITIVE_COLUMNS` (`app/database.py`).
 
 ## API Design
 
@@ -121,8 +131,9 @@ User creates spending mandate
 ## Environment Variables
 
 See `backend/.env.example` for all required configuration. Key variables:
-- `OPENAI_API_KEY` — OpenAI API key
-- `OPENAI_MODEL` — Model name (default: gpt-4o-mini)
+- `AI_PROVIDER` — `auto` (default), `gemini` or `openai`
+- `GEMINI_API_KEY` / `GEMINI_MODEL` — Google Gemini Developer API (default model gemini-3.5-flash)
+- `OPENAI_API_KEY` / `OPENAI_MODEL` — optional OpenAI alternative (default gpt-4o-mini)
 - `PAYPAL_CLIENT_ID` — PayPal Sandbox client ID
 - `PAYPAL_CLIENT_SECRET` — PayPal Sandbox secret
 - `PAYPAL_BASE_URL` — PayPal API base URL (sandbox)
@@ -131,13 +142,16 @@ See `backend/.env.example` for all required configuration. Key variables:
 ## Testing
 
 - Policy engine tests must be pure unit tests (no database, no network)
+- Tests must never reach PayPal, Gemini or OpenAI: use the `fake_paypal` fixture; `conftest.py` pins env vars
+  and blocks real PayPal HTTP for every test
 - Use pytest fixtures for test data
 - Test both passing and failing policy evaluations
 - Integration tests should use test database
 
 ## AI Model Configuration
 
-- Provider: OpenAI (configurable via env)
-- Model: Configurable via `OPENAI_MODEL` env var
+- Provider: Google Gemini (default) or OpenAI, selected by `AI_PROVIDER`
+- Model: `GEMINI_MODEL` / `OPENAI_MODEL`
+- API keys go in request headers, never in URLs or logs
 - The AI is used for product recommendation, NOT for payment decisions
 - AI responses must be validated by the policy engine before any action

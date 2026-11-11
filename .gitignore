@@ -236,3 +236,11 @@ frontend/.vite/
 # PACT specific
 pact.db
 backend/.env
+
+# Local database backups
+*.db.bak*
+
+# The Python template ignores lib/; the frontend source lib must be tracked
+!frontend/src/lib/
+!frontend/src/lib/**
+*.tsbuildinfo

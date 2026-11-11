@@ -1,59 +1,77 @@
-"""Service layer for mandate calculations, budget tracking, and serialization."""
+"""Service layer for mandate budget accounting and serialization."""
 
 from decimal import Decimal
-from typing import Tuple
+from typing import Optional, Tuple
+
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from app.models import Mandate, Proposal, ProposalStatus
+
+from app.models import COMMITTED_STATUSES, SPENT_STATUSES, Mandate, Proposal, as_utc, utc_now
+from app.money import q
 from app.schemas import MandateOut
 
 
-def calculate_mandate_budget(db: Session, mandate: Mandate) -> Tuple[Decimal, Decimal]:
-    """Calculate the spent and remaining budget for a mandate.
-
-    Approved and captured proposals count towards committed spending.
-
-    Args:
-        db: Active database session.
-        mandate: Target Mandate instance.
-
-    Returns:
-        Tuple of (spent_budget, remaining_budget).
-    """
-    committed_statuses = [ProposalStatus.APPROVED, ProposalStatus.CAPTURED]
-
-    spent = (
-        db.query(func.coalesce(func.sum(Proposal.total_amount), Decimal("0.00")))
-        .filter(
-            Proposal.mandate_id == mandate.id,
-            Proposal.status.in_(committed_statuses),
-        )
-        .scalar()
+def _sum(db: Session, mandate_id: str, statuses, exclude_proposal_id: Optional[str]) -> Decimal:
+    query = db.query(func.coalesce(func.sum(Proposal.total_amount), 0)).filter(
+        Proposal.mandate_id == mandate_id,
+        Proposal.status.in_(statuses),
     )
-
-    spent_budget = Decimal(str(spent or "0.00"))
-    max_budget = Decimal(str(mandate.max_budget))
-    remaining_budget = max(Decimal("0.00"), max_budget - spent_budget)
-
-    return spent_budget, remaining_budget
+    if exclude_proposal_id:
+        query = query.filter(Proposal.id != exclude_proposal_id)
+    return q(query.scalar() or 0)
 
 
-def build_mandate_out(
-    mandate: Mandate,
-    spent_budget: Decimal,
-    remaining_budget: Decimal,
-) -> MandateOut:
-    """Construct a full MandateOut schema with calculated budget values."""
+def budget_breakdown(
+    db: Session, mandate: Mandate, exclude_proposal_id: Optional[str] = None
+) -> Tuple[Decimal, Decimal, Decimal]:
+    """Return (spent, committed, remaining).
+
+    spent:     verified CAPTURED payments only.
+    committed: human-approved proposals that are not yet captured.
+    remaining: max_budget - spent - committed (never negative).
+
+    exclude_proposal_id removes one proposal's own claim, so revalidating an
+    already-approved proposal does not count its amount twice.
+    """
+    spent = _sum(db, mandate.id, SPENT_STATUSES, exclude_proposal_id)
+    committed = _sum(db, mandate.id, COMMITTED_STATUSES, exclude_proposal_id)
+    remaining = max(Decimal("0.00"), q(mandate.max_budget) - spent - committed)
+    return spent, committed, remaining
+
+
+def calculate_mandate_budget(
+    db: Session, mandate: Mandate, exclude_proposal_id: Optional[str] = None
+) -> Tuple[Decimal, Decimal]:
+    """Backward-compatible (used_total, remaining) helper."""
+    spent, committed, remaining = budget_breakdown(db, mandate, exclude_proposal_id)
+    return spent + committed, remaining
+
+
+def mandate_status(mandate: Mandate) -> str:
+    if mandate.revoked_at is not None:
+        return "revoked"
+    if mandate.expires_at is not None and as_utc(mandate.expires_at) <= utc_now():
+        return "expired"
+    return "active" if mandate.is_active else "paused"
+
+
+def build_mandate_out(db: Session, mandate: Mandate) -> MandateOut:
+    spent, committed, remaining = budget_breakdown(db, mandate)
     return MandateOut(
         id=mandate.id,
         name=mandate.name,
-        max_budget=mandate.max_budget,
-        allowed_merchants=mandate.allowed_merchants,
-        allowed_categories=mandate.allowed_categories,
-        restrictions=mandate.restrictions,
+        max_budget=q(mandate.max_budget),
+        currency=mandate.currency or "USD",
+        allowed_merchants=mandate.allowed_merchants or [],
+        allowed_categories=mandate.allowed_categories or [],
+        restrictions=mandate.restrictions or {},
         is_active=mandate.is_active,
+        expires_at=as_utc(mandate.expires_at),
+        revoked_at=as_utc(mandate.revoked_at),
+        status=mandate_status(mandate),
         created_at=mandate.created_at,
         updated_at=mandate.updated_at,
-        spent_budget=spent_budget,
-        remaining_budget=remaining_budget,
+        spent_budget=spent,
+        committed_budget=committed,
+        remaining_budget=remaining,
     )

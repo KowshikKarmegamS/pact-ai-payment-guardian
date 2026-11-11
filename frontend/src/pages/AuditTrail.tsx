@@ -1,188 +1,159 @@
-import React, { useState } from 'react';
-import {
-  Shield,
-  FileCheck2,
-  AlertTriangle,
-  CreditCard,
-  SlidersHorizontal,
-  Calendar,
-  Lock,
-  Search,
-} from 'lucide-react';
-import { AuditLogEntry } from '../types';
-import { mockAuditLogs } from '../data/mockData';
+import React, { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowUpRight, ChevronDown, Search, ShieldCheck } from 'lucide-react';
+import { pactApi } from '../api/pact';
+import { Badge, Card, EmptyState, ErrorState, Mono, PageHeader, RefreshButton, Segmented, SkeletonRows, TONE_DOT, cx, inputClass } from '../components/ui';
+import { eventMeta, explainEvent, parseDate, shortId, timeOnly, type EventCategory } from '../lib/format';
+import { useAsync } from '../lib/useAsync';
+import type { AuditLogEntry } from '../types';
+
+type Filter = 'all' | 'alerts' | EventCategory;
+
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: 'all', label: 'All events' },
+  { value: 'alerts', label: 'Security alerts' },
+  { value: 'policy', label: 'Policy' },
+  { value: 'approval', label: 'Approvals' },
+  { value: 'paypal', label: 'PayPal' },
+  { value: 'mandate', label: 'Mandates' },
+  { value: 'ai', label: 'AI' },
+  { value: 'catalog', label: 'Catalog' },
+  { value: 'agent', label: 'Agents' },
+];
+
+const SENSITIVE = /(secret|password|token|authorization|api_?key|card|cvv)/i;
+
+/** Defence in depth: the server already redacts; never render anything that looks sensitive. */
+function redact(value: unknown, key = ''): unknown {
+  if (key && SENSITIVE.test(key)) return '***REDACTED***';
+  if (Array.isArray(value)) return value.map((v) => redact(v));
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, redact(v, k)]));
+  return value;
+}
+
+const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
+
+function dayLabel(iso: string): string {
+  const d = parseDate(iso);
+  if (!d) return 'Unknown date';
+  const today = new Date();
+  const y = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (d.toDateString() === y.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+}
+
+const EventRow: React.FC<{ e: AuditLogEntry; last: boolean }> = ({ e, last }) => {
+  const [open, setOpen] = useState(false);
+  const meta = eventMeta(e.event_type);
+  const order = str(e.details.paypal_order_id);
+  const capture = str(e.details.paypal_capture_id);
+  return (
+    <li className="relative flex gap-4 pb-5 last:pb-0">
+      {!last && <span className="absolute left-[5px] top-5 h-full w-px bg-line" />}
+      <span className={cx('relative z-10 mt-1.5 h-[11px] w-[11px] shrink-0 rounded-full ring-4 ring-surface', TONE_DOT[meta.tone])} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-medium text-fg">{meta.label}</p>
+            {meta.alert && <Badge tone={meta.tone}>security</Badge>}
+          </div>
+          <time className="font-mono text-[11px] text-faint">{timeOnly(e.timestamp)}</time>
+        </div>
+        <p className="mt-0.5 text-[13px] leading-relaxed text-muted">{explainEvent(e)}</p>
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-faint">
+          {e.entity_type === 'Proposal' ? (
+            <Link to={`/proposals/${e.entity_id}`} className="inline-flex items-center gap-1 text-accent hover:underline">
+              Transaction <Mono className="text-[11px] text-accent">{shortId(e.entity_id)}</Mono> <ArrowUpRight className="h-3 w-3" />
+            </Link>
+          ) : (
+            <span>{e.entity_type} <Mono className="text-[11px] text-faint">{shortId(e.entity_id)}</Mono></span>
+          )}
+          {order && <span>Order <Mono className="text-[11px] text-muted">{order}</Mono></span>}
+          {capture && <span>Capture <Mono className="text-[11px] text-ok">{capture}</Mono></span>}
+          <button onClick={() => setOpen((v) => !v)} aria-expanded={open} className="inline-flex items-center gap-0.5 hover:text-muted">
+            Raw record <ChevronDown className={cx('h-3 w-3 transition-transform', open && 'rotate-180')} />
+          </button>
+        </div>
+        {open && (
+          <pre className="mt-2 max-h-72 overflow-auto rounded-lg border border-line bg-ink p-3 font-mono text-[11px] leading-relaxed text-muted animate-fade">
+            {JSON.stringify({ event: e.event_type, entity: `${e.entity_type}:${e.entity_id}`, at: e.timestamp, details: redact(e.details) }, null, 2)}
+          </pre>
+        )}
+      </div>
+    </li>
+  );
+};
 
 export const AuditTrail: React.FC = () => {
-  const [logs] = useState<AuditLogEntry[]>(mockAuditLogs);
-  const [filterType, setFilterType] = useState<string>('ALL');
-  const [searchQuery, setSearchQuery] = useState('');
+  const state = useAsync(() => pactApi.getAuditLogs(500));
+  const [filter, setFilter] = useState<Filter>('all');
+  const [query, setQuery] = useState('');
 
-  const eventTypes = [
-    'ALL',
-    'POLICY_EVALUATED',
-    'PROPOSAL_GENERATED',
-    'APPROVAL_GRANTED',
-    'APPROVAL_REJECTED',
-    'PAYMENT_CAPTURED',
-    'MANDATE_CREATED',
-  ];
+  const rows = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (state.data ?? []).filter((e) => {
+      const meta = eventMeta(e.event_type);
+      if (filter === 'alerts' ? !meta.alert : filter !== 'all' && meta.category !== filter) return false;
+      if (!q) return true;
+      return meta.label.toLowerCase().includes(q) || e.entity_id.toLowerCase().includes(q) || explainEvent(e).toLowerCase().includes(q) || JSON.stringify(e.details).toLowerCase().includes(q);
+    });
+  }, [state.data, filter, query]);
 
-  const filteredLogs = logs.filter((log) => {
-    const matchesType = filterType === 'ALL' || log.event_type === filterType;
-    const matchesSearch =
-      log.entity_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.event_type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      JSON.stringify(log.details).toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesType && matchesSearch;
-  });
+  const groups = useMemo(() => {
+    const out: { label: string; events: AuditLogEntry[] }[] = [];
+    rows.forEach((e) => {
+      const label = dayLabel(e.timestamp);
+      const g = out[out.length - 1];
+      if (g && g.label === label) g.events.push(e);
+      else out.push({ label, events: [e] });
+    });
+    return out;
+  }, [rows]);
 
-  const getEventBadge = (eventType: string) => {
-    switch (eventType) {
-      case 'POLICY_EVALUATED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-            <Shield className="w-3 h-3 text-indigo-600" />
-            Policy Evaluated
-          </span>
-        );
-      case 'PROPOSAL_GENERATED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
-            <FileCheck2 className="w-3 h-3 text-purple-600" />
-            Proposal Generated
-          </span>
-        );
-      case 'APPROVAL_GRANTED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-            Approval Granted
-          </span>
-        );
-      case 'APPROVAL_REJECTED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200">
-            <AlertTriangle className="w-3 h-3 text-rose-600" />
-            Blocked / Rejected
-          </span>
-        );
-      case 'PAYMENT_CAPTURED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-            <CreditCard className="w-3 h-3 text-blue-600" />
-            Payment Captured
-          </span>
-        );
-      case 'MANDATE_CREATED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-            Mandate Created
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-700">
-            {eventType}
-          </span>
-        );
-    }
-  };
+  const alerts = useMemo(() => (state.data ?? []).filter((e) => eventMeta(e.event_type).alert).length, [state.data]);
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Audit Trail</h1>
-          <p className="text-xs sm:text-sm text-slate-500">
-            Cryptographically sealed and immutable history of all autonomous agent evaluations and payment executions.
-          </p>
-        </div>
+    <div>
+      <PageHeader
+        eyebrow="Accountability"
+        title="Security & audit trail"
+        description="An append-only record of every mandate change, recommendation, policy decision, approval and PayPal call. Sensitive fields are redacted before they are stored."
+        actions={<RefreshButton onClick={() => void state.reload()} loading={state.loading} />}
+      />
 
-        <div className="flex items-center space-x-2 text-xs font-mono text-slate-600 bg-white border border-slate-200 px-3 py-1.5 rounded-lg shadow-xs">
-          <Lock className="w-3.5 h-3.5 text-indigo-600" />
-          <span>Chain Integrity: Verified</span>
-        </div>
-      </div>
-
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-          <input
-            type="text"
-            placeholder="Search audit trail by entity, details, or keywords..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 focus:bg-white transition-all placeholder:text-slate-400"
-          />
-        </div>
-
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0">
-          <SlidersHorizontal className="w-4 h-4 text-slate-400 mr-1 shrink-0" />
-          {eventTypes.map((type) => (
-            <button
-              key={type}
-              onClick={() => setFilterType(type)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
-                filterType === type
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              {type.replace('_', ' ')}
-            </button>
-          ))}
+      <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+        <Segmented label="Filter events" value={filter} onChange={setFilter} options={FILTERS.map((f) => (f.value === 'alerts' ? { ...f, count: alerts } : f.value === 'all' ? { ...f, count: state.data?.length ?? 0 } : f))} />
+        <div className="relative xl:w-80">
+          <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-faint" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search events, IDs, details…" aria-label="Search audit events" className={cx(inputClass, 'pl-9')} />
         </div>
       </div>
 
-      {/* Chronological Timeline */}
-      <div className="relative border-l-2 border-indigo-200/80 ml-4 pl-6 space-y-6">
-        {filteredLogs.map((log) => (
-          <div key={log.id} className="relative group">
-            {/* Timeline bullet icon */}
-            <div className="absolute -left-[31px] top-1 w-4 h-4 rounded-full bg-white border-2 border-indigo-600 ring-4 ring-indigo-50 group-hover:scale-110 transition-transform"></div>
+      {state.error && <ErrorState message={state.error} onRetry={() => void state.reload()} />}
 
-            {/* Event Card */}
-            <div className="bg-white rounded-xl border border-slate-200/80 p-5 shadow-xs hover:shadow-md transition-shadow">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
-                <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                  {getEventBadge(log.event_type)}
-                  <span className="text-xs font-mono font-medium text-slate-500">
-                    Entity: <strong className="text-slate-700">{log.entity_type} / {log.entity_id}</strong>
-                  </span>
-                </div>
-                <div className="text-xs text-slate-400 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5" />
-                  <span>
-                    {new Date(log.timestamp).toLocaleString([], {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      second: '2-digit',
-                    })}
-                  </span>
-                </div>
-              </div>
-
-              {/* Event Details JSON / key-value display */}
-              <div className="bg-slate-900 text-slate-100 rounded-lg p-3 font-mono text-xs overflow-x-auto">
-                <pre className="text-[11px] leading-relaxed">
-                  {typeof log.details === 'object'
-                    ? JSON.stringify(log.details, null, 2)
-                    : log.details}
-                </pre>
-              </div>
-
-              <div className="mt-3 flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-100">
-                <span className="font-mono">Log ID: {log.id}</span>
-                <span className="font-mono text-indigo-500">HMAC-SHA256: verified</span>
-              </div>
-            </div>
+      <Card>
+        {!state.data ? (
+          <SkeletonRows rows={6} />
+        ) : rows.length === 0 ? (
+          <EmptyState icon={<ShieldCheck className="h-8 w-8" />} title={state.data.length ? 'No events match' : 'No audit events yet'} />
+        ) : (
+          <div className="divide-y divide-line">
+            {groups.map((g) => (
+              <section key={g.label} className="px-5 py-5 sm:px-6">
+                <h2 className="mb-4 flex items-center gap-3 text-[11px] font-medium uppercase tracking-[0.14em] text-faint">
+                  {g.label}
+                  <span className="h-px flex-1 bg-line" />
+                  <span className="normal-case tracking-normal">{g.events.length} event{g.events.length === 1 ? '' : 's'}</span>
+                </h2>
+                <ol>
+                  {g.events.map((e, i) => <EventRow key={e.id} e={e} last={i === g.events.length - 1} />)}
+                </ol>
+              </section>
+            ))}
           </div>
-        ))}
-      </div>
+        )}
+      </Card>
     </div>
   );
 };

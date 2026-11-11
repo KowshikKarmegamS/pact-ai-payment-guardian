@@ -12,7 +12,7 @@ def test_health_endpoint(client: TestClient) -> None:
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
-    assert data["version"] == "1.0.0"
+    assert data["version"] == "1.1.0"
     assert "timestamp" in data
 
 
@@ -22,7 +22,7 @@ def test_root_endpoint(client: TestClient) -> None:
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "operational"
-    assert data["service"] == "PACT – AI Payment Guardian"
+    assert data["service"] == "PACT – AI Payment Authorization Gateway"
 
 
 def test_products_list_and_filter(
@@ -134,16 +134,23 @@ def test_proposal_generation_and_approval_workflow(
     policy = data["policy"]
 
     assert policy["passed"] is True
-    assert proposal["status"] == "pending"
+    assert proposal["status"] == "AWAITING_HUMAN_APPROVAL"
+    assert data["ai"]["provider"] == "heuristic"
+    assert data["ai"]["fallback_reason"]
     assert proposal["product_id"] == sample_product.id
     assert proposal["merchant"] == sample_product.merchant
     proposal_id = proposal["id"]
 
     # 2. Human approval of proposal
-    approve_res = client.post(f"/api/proposals/{proposal_id}/approve")
+    approve_res = client.post(
+        f"/api/proposals/{proposal_id}/approve",
+        json={"expected_fingerprint": proposal["proposal_fingerprint"]},
+    )
     assert approve_res.status_code == 200
     approved_proposal = approve_res.json()
-    assert approved_proposal["status"] == "approved"
+    assert approved_proposal["status"] == "HUMAN_APPROVED"
+    assert approved_proposal["approval_fingerprint"] == proposal["proposal_fingerprint"]
+    assert approved_proposal["approved_at"]
 
     # 3. Verify audit log captures both events
     audit_events = client.get("/api/audit").json()
@@ -173,5 +180,5 @@ def test_proposal_blocked_by_policy_engine(
     # Must be blocked by policy engine
     assert policy["passed"] is False
     assert len(policy["violations"]) > 0
-    assert proposal["status"] == "rejected"
+    assert proposal["status"] == "POLICY_REJECTED"
 

@@ -1,43 +1,47 @@
 """Audit logging service for tracking security, policy evaluations, and payment events."""
 
+import re
 from typing import Any, Dict
+
 from sqlalchemy.orm import Session
+
 from app.models import AuditLog
 
-# Keys that must be masked to prevent credential or sensitive data leakage
-SENSITIVE_KEY_PATTERNS = {
-    "password",
-    "secret",
-    "token",
-    "authorization",
-    "client_secret",
-    "api_key",
-    "card_number",
-    "cvv",
-    "pin",
-}
+# A key is redacted when one of its word segments matches, or when it contains
+# one of the substrings below. Segment matching avoids false positives such as
+# "shipping" matching "pin".
+_SENSITIVE_SEGMENTS = {"password", "secret", "token", "authorization", "cvv", "pin", "ssn", "credential", "cookie"}
+_SENSITIVE_SUBSTRINGS = ("api_key", "apikey", "client_secret", "access_token", "card_number", "cardnumber", "bearer")
+REDACTED = "***REDACTED***"
+_BEARER_RE = re.compile(r"(?i)bearer\s+[A-Za-z0-9\-._~+/]+=*")
 
 
-def sanitize_audit_details(data: Dict[str, Any]) -> Dict[str, Any]:
-    """Recursively scrub sensitive keys and credentials from audit payloads."""
+def _is_sensitive(key: str) -> bool:
+    k = str(key).lower()
+    if any(s in k for s in _SENSITIVE_SUBSTRINGS):
+        return True
+    return any(seg in _SENSITIVE_SEGMENTS for seg in re.split(r"[^a-z0-9]+", k) if seg)
+
+
+def _scrub_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return _BEARER_RE.sub("Bearer " + REDACTED, value)
+    return value
+
+
+def sanitize_audit_details(data: Any) -> Any:
+    """Recursively scrub sensitive keys and bearer tokens from audit payloads."""
+    if isinstance(data, list):
+        return [sanitize_audit_details(item) for item in data]
     if not isinstance(data, dict):
-        return data
+        return _scrub_value(data)
 
     cleaned: Dict[str, Any] = {}
     for key, value in data.items():
-        key_lower = str(key).lower()
-        if any(sensitive in key_lower for sensitive in SENSITIVE_KEY_PATTERNS):
-            cleaned[key] = "***REDACTED***"
-        elif isinstance(value, dict):
-            cleaned[key] = sanitize_audit_details(value)
-        elif isinstance(value, list):
-            cleaned[key] = [
-                sanitize_audit_details(item) if isinstance(item, dict) else item
-                for item in value
-            ]
+        if _is_sensitive(key):
+            cleaned[key] = REDACTED
         else:
-            cleaned[key] = value
-
+            cleaned[key] = sanitize_audit_details(value)
     return cleaned
 
 
@@ -47,27 +51,17 @@ def log_audit_event(
     entity_type: str,
     entity_id: str,
     details: Dict[str, Any],
+    commit: bool = True,
 ) -> AuditLog:
-    """Record an immutable, sanitized audit log event.
-
-    Args:
-        db: Database session.
-        event_type: High-level action identifier (e.g. MANDATE_CREATED, POLICY_CHECK).
-        entity_type: Target entity model (e.g. Mandate, Proposal).
-        entity_id: Target entity identifier.
-        details: Contextual details (will be automatically sanitized).
-
-    Returns:
-        Persisted AuditLog instance.
-    """
-    sanitized = sanitize_audit_details(details)
+    """Record a sanitized audit log event."""
     audit_entry = AuditLog(
         event_type=event_type,
         entity_type=entity_type,
         entity_id=str(entity_id),
-        details=sanitized,
+        details=sanitize_audit_details(details),
     )
     db.add(audit_entry)
-    db.commit()
-    db.refresh(audit_entry)
+    if commit:
+        db.commit()
+        db.refresh(audit_entry)
     return audit_entry
