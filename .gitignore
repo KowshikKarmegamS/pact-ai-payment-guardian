@@ -243,3 +243,4 @@ backend/.env
 # The Python template ignores lib/; the frontend source lib must be tracked
 !frontend/src/lib/
 !frontend/src/lib/**
+*.tsbuildinfo

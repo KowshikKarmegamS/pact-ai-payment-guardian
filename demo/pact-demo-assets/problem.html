@@ -30,7 +30,7 @@
   .red { color: #f87171; }
 </style>
 </head>
-<body data-seconds="20">
+<body data-seconds="16">
   <div class="glow"></div><div class="grid"></div>
 
   <section class="beat" id="b1">
@@ -70,12 +70,12 @@
   const hide = (id) => { const el = document.getElementById(id); el.style.transition = 'opacity .6s ease'; el.style.opacity = 0; };
   ['cc', 't1', 't2', 't3', 'q'].forEach((id) => { document.getElementById(id).style.animationPlayState = 'paused'; });
   const play = (id, at) => setTimeout(() => { document.getElementById(id).style.animationPlayState = 'running'; }, at);
-  setTimeout(() => hide('b1'), 6000);
-  setTimeout(() => show('b2'), 6600);
-  play('cc', 6700); play('t1', 7700); play('t2', 9300); play('t3', 10900);
-  setTimeout(() => hide('b2'), 14200);
-  setTimeout(() => show('b3'), 14800);
-  play('q', 14900);
+  setTimeout(() => hide('b1'), 3700);
+  setTimeout(() => show('b2'), 4200);
+  play('cc', 4300); play('t1', 6500); play('t2', 8000); play('t3', 9900);
+  setTimeout(() => hide('b2'), 12600);
+  setTimeout(() => show('b3'), 13100);
+  play('q', 13200);
 </script>
 </body>
 </html>

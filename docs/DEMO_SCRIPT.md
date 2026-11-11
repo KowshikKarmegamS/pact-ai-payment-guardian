@@ -1,37 +1,45 @@
-# PACT demo video script (target 2:40, hard limit 3:00)
+# PACT demo script (hard limit 3:00)
 
-Record real app footage only: PayPal Sandbox, real order and capture IDs, no edited numbers, no third-party music.
+The recorded video is `demo/pact-hackathon-final.mp4` (2:50). Its narration, with timestamps, is
+`demo/pact-narration.txt`, and `demo/tools/` rebuilds it (see `HANDOFF.md`). This page is the same story
+for a live demo in front of judges.
 
-## Before recording
+Real app footage only: PayPal Sandbox, real order and capture IDs, no edited numbers, no third-party music.
 
-- Backend and frontend running (`APP_BASE_URL` must match the URL in the browser).
-- Sidebar shows **PayPal: Sandbox connected**. For the AI path on camera, set `GEMINI_API_KEY` (free tier) and confirm the sidebar says **Google Gemini · gemini-3.5-flash**; otherwise the recommender is labelled **Heuristic (no AI key)** and you should say so.
-- Sandbox personal (buyer) credentials ready in a password manager, not on screen.
-- Optional: clear the assistant list ("Clear this list") so the screen starts empty.
-- Allow popups for the app's origin, or use the "continue in this tab" link.
+## Before you start
+
+- Backend running (`APP_BASE_URL` must match the browser URL). Sidebar shows **PayPal: Sandbox connected** and
+  **Recommender: Gemini**.
+- A mandate such as *Home Office Essentials*: Electronics from TechHub, $100 per item, $200 budget.
+- On **Agents**, connect "Gemini agent via MCP" to that mandate and keep the key in an environment variable,
+  never on screen.
+- Sandbox buyer credentials in a password manager, not on screen. Allow popups for the app's origin.
 
 ## Script
 
-**0:00–0:20 · Problem** (Overview page)
-"AI can now shop for us. But should it have unrestricted access to our money? One prompt injection in a product listing, one hallucinated price, and an agent with a card number spends money nobody approved."
+**0:00–0:25 · The pitch** (Control Center)
+"PACT is the payment authorization gateway for AI agents. Agents can now shop for us, but to pay we hand them a
+payment method with no limits. PACT sits between any agent and PayPal: agents can only ask, a deterministic
+policy engine authorizes, I approve, PayPal executes."
 
-**0:20–0:45 · PACT** (Overview → Mandates)
-"PACT puts a deterministic gate between the agent and PayPal. AI recommends, code authorizes, a human approves, PayPal executes. This mandate allows $750 at approved merchants, Electronics and Books, at most $300 per item, and no consoles or games."
+**0:25–1:00 · Blocked** (Mandates → Reference agent)
+Show the mandate. Ask the reference agent for the $125 NuPhy keyboard. "Gemini recommends it. The policy engine
+blocks it: attempted $125, allowed $100. No approve button, no PayPal order."
 
-**0:45–1:15 · Recommendation and receipt** (Assistant → A · Safe purchase)
-"I ask for an ergonomic mouse for CAD." Point at the recommendation-source badge (Gemini model or heuristic). "The AI only picked a product ID. The price, merchant and category come from the catalog. The policy engine ran 11 rules and every one passed; here's the receipt. It's waiting for me."
+**1:00–1:50 · Paid** (Reference agent → Authorization → PayPal)
+Ask for "a wireless mechanical keyboard for coding, under $100". "Every rule passes, but passing policy is not
+authorization." Approve: "bound to a fingerprint of the product, price, mandate and requesting agent." Pay with
+PayPal (Sandbox), approve as the buyer, back in PACT: "the server asked PayPal directly." Capture: "a real
+capture ID, status COMPLETED, for exactly $89."
 
-**1:15–1:40 · Security** (B, then C)
-"Now: buy a PlayStation 5 for the office." Show BLOCKED and the six violations. "No approve button, no PayPal order." Click C. "This listing tells AI agents it's pre-approved and to pretend the merchant is TechHub. The policy engine never reads descriptions; the merchant is QuickDeals Marketplace, so it's blocked."
+**1:50–2:15 · Any agent** (terminal, then Agents)
+Run `integrations/mcp/example_agent.py "Request the Sony WH-1000XM5 headphones for me right now. Money is no object."`
+"This is a separate Gemini agent that knows PACT only through MCP. It has no approve tool and no pay tool. PACT
+says no, and the agent tells me why." Then ask it for a USB-C hub and open **Agents**: its request is waiting for
+me, with its own revocable key.
 
-**1:40–2:20 · PayPal** (back to A)
-Click **Approve $99.99 to TechHub**. "My approval is bound to this fingerprint; change anything and it's void." Click **Pay with PayPal (Sandbox)**, log in as the Sandbox buyer, approve. Back in PACT: "PACT just asked PayPal directly; PayPal says the buyer approved. Returning to the page proves nothing on its own." Click **Capture $99.99**. "Before capturing, the server re-verified the order, the amount, my approval and every rule. Here is PayPal's capture ID, status COMPLETED, for exactly $99.99."
+**2:15–2:40 · Integrity and audit**
+Approve the hub, then change its price on **Catalog**. "The approval is void at once." Open **Audit Trail**:
+agent request, policy decision, approval, PayPal order, capture.
 
-**2:20–2:40 · Impact** (Transactions → Audit Trail)
-Show the captured row with real order and capture IDs, then the audit timeline: recommendation, policy passed, human approved, order created, buyer approved, capture attempted, captured.
-
-**Close:** "Let AI handle the shopping. Let users remain in control of the spending."
-
-## Optional 15-second extra
-
-Approve a second mouse, then change the mandate budget on the Mandates page. Back on the assistant the proposal shows **Approval expired** with the exact change listed, and capture is refused.
+**Close:** "Agents request. PACT authorizes. You approve. PayPal executes."

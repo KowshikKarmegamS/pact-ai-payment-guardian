@@ -15,6 +15,7 @@ import re
 import subprocess
 import sys
 import time
+import array
 import wave
 from pathlib import Path
 
@@ -102,6 +103,43 @@ def matches(transcript: str | None, text: str) -> bool | None:
     return bool(got) and got[:2] == want[:2] and got[-1] == want[-1] and 0.6 <= len(got) / len(want) <= 1.25
 
 
+def declick(path: Path) -> str:
+    """Remove the speech model's edge artifacts in place.
+
+    Gemini TTS clips begin with a ~5 ms full-scale blip and end with ~125 ms of loud noise after the
+    speech has finished. Both are audible as clicks/static at every cut. Strip them, then fade the
+    edges (10 ms in, 15 ms out) so no clip starts or stops on a non-zero sample.
+    """
+    with wave.open(str(path), "rb") as w:
+        sr, ch, sw, n = w.getframerate(), w.getnchannels(), w.getsampwidth(), w.getnframes()
+        assert ch == 1 and sw == 2, "mono 16-bit expected"
+        a = array.array("h", w.readframes(n))
+    win = max(1, sr // 200)  # 5 ms
+    rms = [(sum(x * x for x in a[i:i + win]) / win) ** 0.5 for i in range(0, len(a) - win + 1, win)]
+    start, end, notes = 0, len(a), []
+    if len(rms) > 2 and rms[0] > 2000 and rms[1] < 300:
+        start = 2 * win
+        notes.append("head blip")
+    i, run = len(rms) - 1, 0
+    while i >= 0 and (rms[i] > 1000 or rms[i] == 0) and run < 60:
+        i, run = i - 1, run + 1
+    if 8 <= run < 60 and i >= 4 and all(r < 300 for r in rms[i - 3:i + 1]):
+        end = (i + 1) * win
+        notes.append(f"tail burst {run * 5} ms")
+    a = a[start:end]
+    fin, fout = sr // 100, int(sr * 0.015)
+    for k in range(min(fin, len(a))):
+        a[k] = int(a[k] * k / fin)
+    for k in range(min(fout, len(a))):
+        a[len(a) - 1 - k] = int(a[len(a) - 1 - k] * k / fout)
+    with wave.open(str(path), "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes(a.tobytes())
+    return ", ".join(notes) or "clean"
+
+
 def silences(wav: Path) -> list:
     out = subprocess.run(["ffmpeg", "-hide_banner", "-i", str(wav), "-af", "silencedetect=noise=-40dB:d=0.25", "-f", "null", "-"],
                          capture_output=True, text=True).stderr
@@ -114,6 +152,7 @@ def finish(raw: Path, seg_id: str) -> float:
     """Trim edge silence, cap inner pauses at ~0.4 s, and speed up slightly if the read runs long."""
     final = OUT / f"{seg_id}.wav"
     tmp = OUT / f"{seg_id}.tmp.wav"
+    declick(raw)
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", str(raw), "-af",
                     "silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.05,"
                     "silenceremove=stop_periods=-1:stop_threshold=-45dB:stop_duration=0.4:stop_silence=0.4,"
@@ -131,11 +170,15 @@ def finish(raw: Path, seg_id: str) -> float:
 
 def spoken_text(seg: dict) -> str:
     # The spoken script writes the name as a word ("Pact") so it is not spelled out letter by letter.
-    return seg["say"].replace("A I", "AI").replace("I D,", "ID,")
+    return seg["say"].replace("A I", "AI").replace("I D,", "ID,").replace("A P I", "API").replace("M C P", "MCP")
 
 
 def main():
     args = [a for a in sys.argv[1:]]
+    if args and args[0] == "--declick":  # clean WAVs that were made before declick existed
+        for f in sorted(OUT.glob("*.wav")):
+            print(f"{f.name}: {declick(f)}")
+        return
     model = DEFAULT_MODEL
     if "--model" in args:
         i = args.index("--model")

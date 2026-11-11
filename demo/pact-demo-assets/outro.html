@@ -12,16 +12,16 @@
   .l1 b { color: #7c8cff; } .l2 b { color: #9a7bff; } .l3 b { color: #fbbf24; } .l4 b { color: #34d399; }
   .brand { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0; }
   .brand h1 { font-size: 150px; font-weight: 700; letter-spacing: 0.1em; padding-left: 0.1em; margin-top: 44px; line-height: 1; }
-  .brand .eyebrow { margin-top: 26px; font-size: 28px; letter-spacing: 0.42em; padding-left: 0.42em; }
+  .brand .eyebrow { margin-top: 26px; font-size: 26px; letter-spacing: 0.3em; padding-left: 0.3em; }
   .brand .tag { margin-top: 54px; font-size: 40px; font-weight: 500; color: #c9d1e2; }
   .brand .foot { margin-top: 70px; font-size: 22px; color: #66718a; letter-spacing: 0.08em; }
 </style>
 </head>
-<body data-seconds="17">
+<body data-seconds="15">
   <div class="glow"></div><div class="grid"></div>
 
   <div class="lines" id="lines">
-    <div class="line l1 in" style="animation-delay:.4s"><span class="n">01</span><span><b>AI</b> RECOMMENDS.</span></div>
+    <div class="line l1 in" style="animation-delay:.4s"><span class="n">01</span><span><b>AGENT</b> REQUESTS.</span></div>
     <div class="line l2 in" style="animation-delay:1.9s"><span class="n">02</span><span><b>POLICY ENGINE</b> AUTHORIZES.</span></div>
     <div class="line l3 in" style="animation-delay:3.6s"><span class="n">03</span><span><b>HUMAN</b> APPROVES.</span></div>
     <div class="line l4 in" style="animation-delay:5.2s"><span class="n">04</span><span><b>PAYPAL</b> EXECUTES.</span></div>
@@ -32,14 +32,14 @@
       <svg viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>
     </div>
     <h1>PACT</h1>
-    <p class="eyebrow">The AI Payment Guardian</p>
-    <p class="tag">Let AI handle the shopping. <span class="accent">You stay in control of the spending.</span></p>
-    <p class="foot">Built on PayPal Orders v2 (Sandbox) · Google Gemini · deterministic policy engine</p>
+    <p class="eyebrow">The payment authorization gateway for AI agents</p>
+    <p class="tag">Any AI agent. <span class="accent">Your limits. Your approval.</span></p>
+    <p class="foot">REST API · MCP server · PayPal Orders v2 (Sandbox) · Google Gemini · deterministic policy engine</p>
   </div>
 
 <script>
-  setTimeout(() => { const l = document.getElementById('lines'); l.style.transition = 'opacity .7s ease'; l.style.opacity = 0; }, 8600);
-  setTimeout(() => { const b = document.getElementById('brand'); b.style.transition = 'opacity 1s ease, transform 1s cubic-bezier(.2,.7,.2,1)'; b.style.transform = 'scale(1)'; b.style.opacity = 1; }, 9300);
+  setTimeout(() => { const l = document.getElementById('lines'); l.style.transition = 'opacity .7s ease'; l.style.opacity = 0; }, 7600);
+  setTimeout(() => { const b = document.getElementById('brand'); b.style.transition = 'opacity 1s ease, transform 1s cubic-bezier(.2,.7,.2,1)'; b.style.transform = 'scale(1)'; b.style.opacity = 1; }, 8300);
   document.getElementById('brand').style.transform = 'scale(.96)';
 </script>
 </body>

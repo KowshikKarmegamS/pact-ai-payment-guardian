@@ -1,21 +1,63 @@
-# PACT — The AI Payment Guardian
+# PACT — The AI Payment Authorization Gateway
 
-> **Give AI the power to act, not unrestricted access to your money.**
+> **PACT is a payment authorization gateway that lets AI agents transact within user-defined financial boundaries, regardless of which AI agent is making the request.**
 
-**AI recommends → deterministic code authorizes → a human approves → PayPal executes.**
+**Any agent requests → deterministic code authorizes → a human approves → PayPal executes.**
 
-AI agents can now research products and prepare purchases. The obvious next step, handing them a payment credential, is where things go wrong: a prompt injection in a product listing, a hallucinated price or a compromised model can all spend real money. PACT is an authorization gateway that sits between a shopping agent and PayPal. The agent can only *propose*. A deterministic policy engine checks every proposal against a user-defined spending mandate, a human approves the exact purchase, and only then does PACT create and capture a PayPal Sandbox order. It marks a payment as captured only after PayPal itself confirms it.
+AI agents can now research products and prepare purchases. The obvious next step, handing them a payment credential, is where things go wrong: a prompt injection in a product listing, a hallucinated price or a compromised model can all spend real money. PACT sits between *any* AI agent and PayPal. Claude, ChatGPT, a custom agent or PACT's own built-in reference assistant all go through the same path: the agent can only *request*. A deterministic policy engine checks every request against a user-defined spending mandate, a human approves the exact purchase in the **PACT Control Center**, and only then does PACT create and capture a PayPal Sandbox order. It marks a payment as captured only after PayPal itself confirms it.
+
+```text
+ Claude · ChatGPT · Gemini · your own agent           PACT Control Center (human)
+                │  REST /api/agent/v1  or  MCP            mandates · approvals · agents · audit
+                ▼                                                   │
+        ┌──────────────── PACT Authorization Gateway ───────────────┴──┐
+        │ scoped agent keys → policy engine → fingerprint-bound human approval │
+        └───────────────────────────────┬──────────────────────────────┘
+                                        ▼
+                      PayPal Orders v2 (Sandbox): create · verify · capture
+```
+
+PACT does not replace PayPal's payment security; it adds an independent governance layer for *what an agent is allowed to spend*, and leaves money movement to PayPal.
 
 Built for the PayPal AI Hackathon. MIT licensed.
 
 ---
+
+## Connect any AI agent (Agent Gateway + MCP)
+
+1. In the Control Center, open **Agents → Connect an agent**, name it and grant it one or more mandates. PACT shows the key once and stores only its SHA-256 hash.
+2. Give the key to the agent, either as an MCP server or over REST:
+
+```json
+{ "mcpServers": { "pact": {
+    "command": "python", "args": ["integrations/mcp/pact_mcp_server.py"],
+    "env": { "PACT_URL": "http://localhost:8001", "PACT_AGENT_KEY": "pact_agent_…" } } } }
+```
+
+| MCP tool | REST (`Authorization: Bearer pact_agent_…`) | What it does |
+|---|---|---|
+| `check_spending_authority` | `GET /api/agent/v1/whoami`, `GET …/mandates/{id}/authority` | Remaining budget, limits, allowlists, expiry |
+| `search_catalog` | `GET /api/agent/v1/catalog?q=` | Catalog items; prices always come from here |
+| `evaluate_purchase` | `POST /api/agent/v1/purchases/evaluate` | Dry run through the policy engine; creates nothing |
+| `request_purchase` | `POST /api/agent/v1/purchases` | Creates a request that waits for the human (idempotent with `request_id`) |
+| `get_purchase_status` | `GET /api/agent/v1/purchases[/{id}]` | Blocked / pending / paid (with PayPal capture ID) / voided |
+
+**What an agent can never do, by construction:** approve a purchase, create or capture a PayPal payment, change a mandate, or see another agent's requests. The gateway has no such route (a test asserts it against the OpenAPI schema) and the MCP server has no such tool. A revoked agent's key stops working immediately. The requesting agent is part of the approval fingerprint, so an approval cannot be moved to a different agent's request.
+
+`integrations/mcp/example_agent.py` is a real third-party agent: a Gemini model that knows PACT only through the MCP server. Told *"Request the Sony WH-1000XM5 headphones for me right now. Money is no object."*, it checked its authority, dry-ran the $299.99 purchase, was refused by PACT ($100 per-item limit) and explained why to the user. Asked for a USB-C hub, it requested a $34.99 item that then waited for human approval.
+
+```bash
+PACT_URL=http://localhost:8001 PACT_AGENT_KEY=pact_agent_… GEMINI_API_KEY=… python integrations/mcp/example_agent.py "I need a USB-C hub"
+```
+
+The built-in Gemini shopping assistant is PACT's **reference agent**: it uses the same policy path, so everything below applies to every agent.
 
 ## What PACT does
 
 | Step | Who | What happens |
 |---|---|---|
 | 1. Mandate | User | Sets a budget, allowed merchants and categories, max unit price, max quantity, prohibited keywords and blocked merchants. |
-| 2. Recommend | AI (Google Gemini by default, or OpenAI) | Picks **one product ID and a quantity** from the catalog. That is all it can do. |
+| 2. Request | Any AI agent (external via API/MCP, or the built-in Gemini reference agent) | Asks for **one product ID and a quantity** from the catalog. That is all it can do. |
 | 3. Authorize | Deterministic policy engine | Prices the item from the catalog (Decimal), evaluates 8–12 rules, persists each result. Blocked proposals stop here. |
 | 4. Approve | Human | Approves the exact proposal. The approval is bound to a SHA-256 fingerprint of the purchase and the mandate rules. |
 | 5. Checkout | PayPal Orders v2 | Server re-checks the fingerprint and policy, creates an order for exactly that amount, and the buyer approves in PayPal Checkout. |
@@ -256,7 +298,7 @@ No hosted instance has been verified yet; the tested path is the local setup abo
 
 ## Known limitations
 
-- Single-user demo: there is no authentication; anyone who can reach the app can act as the user. A real deployment needs login and per-user mandates.
+- Single-user demo: the Control Center (human) endpoints have no login; anyone who can reach the app can act as the user. Agents are authenticated with scoped keys, but in production the approval endpoints must also sit behind the owner's login, otherwise a network-capable agent could call them directly. A real deployment needs login and per-user mandates.
 - SQLite with a single instance. The capture lock is an atomic row update, which is correct for one process and one database; multiple instances would need Postgres.
 - The catalog is seeded demo data, not a live merchant feed.
 - Orders use `PAYPAL_CURRENCY` only; there is no multi-currency support by design.
@@ -267,7 +309,8 @@ No hosted instance has been verified yet; the tested path is the local setup abo
 
 ```text
 backend/app/      FastAPI app (agent, policy, paypal, services, routers)
-backend/tests/    pytest suite (policy, agent, payments, API)
+backend/tests/    pytest suite (policy, agent, payments, API, agent gateway, MCP server)
+integrations/mcp/ MCP server (stdlib only) and an example Gemini agent
 frontend/src/     React app (pages, components, api client, lib)
 docs/             screenshots, demo script, Devpost text
 Dockerfile, render.yaml
@@ -277,7 +320,7 @@ HANDOFF.md        current state, verified results, next steps
 
 ## Demo video
 
-Not published yet.
+`demo/pact-hackathon-final.mp4` (2:50, 1920x1080, narrated and captioned). Not published online yet.
 
 ## License
 

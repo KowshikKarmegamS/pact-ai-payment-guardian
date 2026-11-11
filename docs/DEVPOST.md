@@ -1,10 +1,10 @@
-# Devpost submission draft — PACT: The AI Payment Guardian
+# Devpost submission draft — PACT: The AI Payment Authorization Gateway
 
 > Fill in the video link once it is published. Do not add a hosted URL unless it has been deployed and checked.
 
 ## Tagline
 
-Give AI the power to act, not unrestricted access to your money.
+The payment authorization gateway for AI agents: let any agent shop for you, only within the limits you set.
 
 ## Inspiration
 
@@ -12,15 +12,20 @@ Shopping agents are getting good at finding the right product. The unsolved part
 
 ## What it does
 
-PACT is a payment authorization gateway for AI shopping agents, built on PayPal.
+PACT is a payment authorization gateway that lets AI agents transact within user-defined financial boundaries, regardless of which AI agent is making the request. It is middleware, not another shopping chatbot: Claude, ChatGPT, a custom agent or PACT's own reference assistant all connect through the same **Agent Gateway** (a REST API or an MCP server), and the human manages everything in the **PACT Control Center**.
 
-1. A user creates a **spending mandate**: budget, allowed merchants and categories, max unit price and quantity, prohibited keywords and blocked merchants.
-2. The **AI recommends** one product from the catalog. Its output is limited to a product ID and quantity, validated against a strict schema.
-3. A **deterministic policy engine** prices the item from the catalog and evaluates every rule. Violations block the purchase outright, with a plain-language reason for each.
-4. The **human approves** the exact purchase. The approval is bound to a SHA-256 fingerprint of the product, merchant, price, quantity, currency and mandate rules.
-5. **PayPal executes**: PACT creates a PayPal Orders v2 Sandbox order for exactly that amount; the buyer approves in PayPal Checkout; PACT confirms the approval with PayPal server-side, re-checks the fingerprint and every rule, captures with an idempotency key, and records the payment only when PayPal returns a real capture ID with status COMPLETED for the approved amount.
+1. A user creates a **spending mandate**: budget, allowed merchants and categories, max unit price and quantity, prohibited keywords and blocked merchants, optional expiry.
+2. The user **connects an agent** and grants it specific mandates. The agent gets its own revocable key (only its hash is stored).
+3. The **agent requests** one product from the catalog through the API or MCP tools (`check_spending_authority`, `search_catalog`, `evaluate_purchase`, `request_purchase`, `get_purchase_status`). There is no approve tool and no pay tool. The built-in Gemini assistant is the reference agent and uses the same path.
+4. A **deterministic policy engine** prices the item from the catalog and evaluates every rule. Violations block the purchase outright, with a plain-language reason for each.
+5. The **human approves** the exact purchase in the Control Center. The approval is bound to a SHA-256 fingerprint of the product, merchant, price, quantity, currency, mandate rules and requesting agent.
+6. **PayPal executes**: PACT creates a PayPal Orders v2 Sandbox order for exactly that amount; the buyer approves in PayPal Checkout; PACT confirms the approval with PayPal server-side, re-checks the fingerprint and every rule, captures with an idempotency key, and records the payment only when PayPal returns a real capture ID with status COMPLETED for the approved amount.
 
 Every proposal gets an **Authorization Receipt** explaining which rules passed or failed, the budget at decision time, the approval fingerprint, PayPal IDs and the full lifecycle timeline, built from persisted server data and an append-only audit log.
+
+## Why middleware
+
+Every company building an agent will hit the same question: how much may this agent spend, on what, and who signs off? Solving it inside each agent means trusting each agent. PACT solves it once, outside the model, for every agent: one policy engine, one approval flow, one audit trail, and PayPal as the single place money moves. It complements PayPal's payment security rather than replacing it. In the demo, a separate Gemini agent that knows PACT only through MCP is told "money is no object"; PACT still holds it to the $100 limit, and the agent explains the refusal to the user.
 
 ## Why PayPal is central
 
@@ -36,7 +41,7 @@ The demo includes a product listing whose description instructs AI agents that i
 
 ## How we built it
 
-FastAPI, SQLAlchemy 2, SQLite, Pydantic, httpx (Gemini REST API) and the OpenAI SDK on the backend; React, Vite, TypeScript, Tailwind and Lucide on the frontend. The policy engine is a pure module with no database or network access. Money is `Decimal` throughout. Capture safety combines an atomic database lock, a stable PayPal-Request-Id, and reconciliation through order lookup after timeouts. 89 automated backend tests run against an in-memory PayPal fake, so the suite can never charge anyone.
+An Agent Gateway API with per-agent scoped keys, and a dependency-free MCP server (JSON-RPC over stdio). FastAPI, SQLAlchemy 2, SQLite, Pydantic, httpx (Gemini REST API) and the OpenAI SDK on the backend; React, Vite, TypeScript, Tailwind and Lucide on the frontend. The policy engine is a pure module with no database or network access. Money is `Decimal` throughout. Capture safety combines an atomic database lock, a stable PayPal-Request-Id, and reconciliation through order lookup after timeouts. 139 automated backend tests run against an in-memory PayPal fake, so the suite can never charge anyone.
 
 ## Challenges
 
@@ -51,8 +56,8 @@ The interesting security boundary in agentic commerce isn't the model, it's the 
 
 ## What's next
 
-Per-user authentication and mandates, Postgres for multi-instance deployments, merchant-signed catalogs, PayPal webhooks for asynchronous capture updates, and mandate templates for teams.
+Owner login in front of the Control Center, per-agent budgets and rate limits, published MCP server package, per-user mandates, Postgres for multi-instance deployments, merchant-signed catalogs, PayPal webhooks for asynchronous capture updates, and mandate templates for teams.
 
 ## Built with
 
-python, fastapi, sqlalchemy, sqlite, pydantic, google-gemini, openai, paypal-orders-v2, paypal-checkout, react, typescript, vite, tailwindcss
+python, mcp, fastapi, sqlalchemy, sqlite, pydantic, google-gemini, openai, paypal-orders-v2, paypal-checkout, react, typescript, vite, tailwindcss

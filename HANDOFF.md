@@ -1,4 +1,4 @@
-# HANDOFF.md — PACT project state
+# HANDOFF.md — PACT project state (AI Payment Authorization Gateway)
 
 > Last updated: 2026-11-11 (branch `feat/judge-ready-payment-guardian`)
 
@@ -6,7 +6,7 @@
 
 | Item | State | Evidence |
 |---|---|---|
-| Backend tests | **108 passed** (was 17) | `cd backend && pytest -q` |
+| Backend tests | **139 passed** | `cd backend && pytest -q` |
 | Frontend production build | **passes**, no mock imports | `cd frontend && npm run build` |
 | PayPal Sandbox OAuth | **verified live** | `GET /api/status?check_paypal=true` → `oauth.ok: true` |
 | Real Sandbox order creation | **verified live** | orders `45E59597XE7243603` (curl smoke test, later rejected) and `4JN22935LV1612144` (via UI) |
@@ -84,3 +84,34 @@ Stop it before using port 8000 for the new build.
   buyer (`node record.mjs login`), then `bash run_takes.sh && python build.py` in `demo/tools`.
 - Servers left running: old v1.0.0 on :8000, main app on :8001 (restart to pick up latest backend and key), demo on :8002.
 - Not done: Docker build, Render deployment, README screenshots of the new design, publishing the video.
+
+## Repositioned as middleware: Agent Gateway + MCP (2026-11-11)
+
+- PACT is now presented as the **payment authorization gateway for AI agents**. The standalone app is the
+  **PACT Control Center**; the built-in Gemini assistant is the **reference agent** (nav: "Reference agent").
+- Agent Gateway `/api/agent/v1` (`backend/app/routers/gateway.py`): per-agent keys (`services/agent_keys.py`,
+  SHA-256 hash stored, shown once), scoped to granted mandates; whoami/authority, catalog search, dry-run evaluate,
+  request purchase (idempotent `request_id`), status. No approve/order/capture/mandate route; a test checks the
+  OpenAPI schema. Control Center side: `/api/agents` (register, list, revoke) and the **Agents** page.
+- The requesting agent is added to `canonical_snapshot()` only when set, so fingerprints of older proposals are unchanged.
+- `integrations/mcp/pact_mcp_server.py`: stdlib-only MCP stdio server with 5 tools and no pay tool.
+  `integrations/mcp/example_agent.py`: a real Gemini agent that knows PACT only through MCP (verified live on :8001
+  and :8002: over-limit headphones refused; $34.99 USB-C hub request waiting for human approval).
+- Known gap (documented in README): Control Center endpoints have no owner login yet, so in production approval
+  must sit behind authentication.
+
+### Video changes
+
+- Static at cuts: every Gemini TTS clip started with a ~5 ms full-scale blip and ended with ~125 ms of loud noise.
+  `tts_gemini.py` now runs `declick()` on every clip (`python tts_gemini.py --declick` cleans existing ones).
+  All transitions in the final file now measure -56 to -75 dB.
+- Lag at cuts: several clips were a frozen frame for 5-10 s while narration ran, then jumped. `build.py` now adds
+  a slow 3.5% push-in to app footage, joins clips with 0.35 s crossfades, and places each voice line on the
+  crossfaded timeline. Remaining still moments are short title-card holds (<= 3 s).
+- New scenes: `card-mcp` (the real example-agent transcript) and take `app4` (Agents page and the agent's request).
+  Intro, dashboard line, reference-agent line and outro re-voiced. Final: **2:50**, 1920x1080 H.264 + AAC.
+- Voice models: lines 01-04 and 05 from `gemini-3.8-flash-tts`; 06-14 and 14b/14c/15 from
+  `gemini-3.8-flash-lite-tts` (both free-tier daily limits were reached). Not listened to by a human yet.
+- Demo DB backup before the agent scenes: `demo/tools/pact-demo.db.bak-before-agents` (git-ignored).
+- Old app takes (app1-app3) still show the earlier sidebar labels ("Command Center", "AI Payment Guardian");
+  re-recording them needs the PayPal Sandbox buyer signed in to the recorder profile.

@@ -20,6 +20,8 @@ ASSETS = DEMO / "pact-demo-assets"
 FPS = 30
 LEAD, TAIL = 0.45, 0.65          # silence before / after each narration line inside its clip
 CARD_FADE = 0.45
+XFADE = 0.35                      # crossfade between consecutive clips (replaces hard cuts)
+PUSH_IN = 0.035                   # slow zoom over each app clip so held screens never look frozen
 
 
 def run(args, cwd=None):
@@ -95,6 +97,12 @@ def build_clip(seg, index, total) -> dict:
     if played < dur:
         filters.append(f"tpad=stop_mode=clone:stop_duration={dur - played + 0.1:.3f}")
     is_card = take.startswith("card-")
+    if not is_card:
+        # Gentle push-in toward the centre. Upscale first so the moving crop does not jitter.
+        frames = int(round(dur * FPS)) or 1
+        filters.append("scale=3840:2160:flags=bicubic")
+        filters.append(f"zoompan=z='1+{PUSH_IN}*on/{frames}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+                       f":d=1:s=1920x1080:fps={FPS}")
     if is_card or index == 0:
         filters.append(f"fade=t=in:st=0:d={CARD_FADE}")
     if is_card or index == total - 1:
@@ -125,10 +133,20 @@ def ts_srt(t):
     return f"{int(h):02d}:{int(m):02d}:{int(s):02d},{int(round((s - int(s)) * 1000)):03d}"
 
 
+def timeline(clips):
+    """Start time of every clip once consecutive clips overlap by XFADE, and the total length."""
+    starts, t = [], 0.0
+    for c in clips:
+        starts.append(t)
+        t += c["dur"] - XFADE
+    return starts, t + XFADE
+
+
 def captions(clips):
     """Caption lines share each clip's narration time in proportion to their length."""
-    events, srt, t, n = [], [], 0.0, 0
-    for c in clips:
+    events, srt, n = [], [], 0
+    starts, total = timeline(clips)
+    for c, t in zip(clips, starts):
         parts = [p.strip() for p in c["caption"].split("|") if p.strip()]
         weights = [len(p) + 8 for p in parts]
         cursor = t + LEAD
@@ -139,7 +157,6 @@ def captions(clips):
             n += 1
             srt.append(f"{n}\n{ts_srt(a)} --> {ts_srt(b)}\n{part}\n")
             cursor += d
-        t += c["dur"]
     header = """[Script Info]
 ScriptType: v4.00+
 PlayResX: 1920
@@ -157,7 +174,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     (WORK / "captions.ass").write_text(header + "\n".join(events) + "\n", encoding="utf-8")
     ASSETS.mkdir(exist_ok=True)
     (ASSETS / "captions.srt").write_text("\n".join(srt), encoding="utf-8")
-    return t
+    return total
 
 
 def main():
@@ -179,10 +196,28 @@ def main():
     cache.write_text(json.dumps({c["id"]: {**c, "clip": str(c["clip"]), "audio": str(c["audio"])} for c in clips}, indent=1))
 
     total = captions(clips)
-    (WORK / "video.txt").write_text("\n".join(f"file '{c['clip'].as_posix()}'" for c in clips), encoding="utf-8")
-    (WORK / "audio.txt").write_text("\n".join(f"file '{c['audio'].as_posix()}'" for c in clips), encoding="utf-8")
-    run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", WORK / "video.txt", "-c", "copy", WORK / "video.mp4"])
-    run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", WORK / "audio.txt", "-c:a", "pcm_s16le", WORK / "voice.wav"])
+    starts, _ = timeline(clips)
+
+    # Picture: crossfade each clip into the next instead of a hard cut.
+    args, chain, prev = ["ffmpeg", "-y"], [], "0:v"
+    for c in clips:
+        args += ["-i", c["clip"]]
+    for k in range(1, len(clips)):
+        chain.append(f"[{prev}][{k}:v]xfade=transition=fade:duration={XFADE}:offset={starts[k]:.3f}[x{k}]")
+        prev = f"x{k}"
+    run(args + ["-filter_complex", ";".join(chain) + f";[{prev}]format=yuv420p[v]", "-map", "[v]",
+                "-c:v", "libx264", "-crf", "15", "-preset", "veryfast", "-r", FPS, WORK / "video.mp4"])
+
+    # Voice: each declicked line placed on the crossfaded timeline, so picture and voice cannot drift.
+    args, chain = ["ffmpeg", "-y"], []
+    for k, c in enumerate(clips):
+        args += ["-i", WORK / "voice" / f"{c['id']}.wav"]
+        delay = int(round((starts[k] + LEAD) * 1000))
+        chain.append(f"[{k}:a]aresample=48000,aformat=channel_layouts=stereo,adelay={delay}:all=1[a{k}]")
+    mix = "".join(f"[a{k}]" for k in range(len(clips)))
+    run(args + ["-filter_complex",
+                ";".join(chain) + f";{mix}amix=inputs={len(clips)}:normalize=0:duration=longest,apad,atrim=0:{total:.3f}[out]",
+                "-map", "[out]", "-c:a", "pcm_s16le", WORK / "voice.wav"])
 
     # Original ambient bed: three soft sine partials with slow tremolo. Synthesized here; no third-party audio.
     bed = (f"sine=f=110:d={total:.2f},volume=0.5[a];sine=f=164.81:d={total:.2f},volume=0.32[b];sine=f=220:d={total:.2f},volume=0.2[c];"
@@ -196,16 +231,14 @@ def main():
          "-map", "[vout]", "-map", "[aout]", "-c:v", "libx264", "-profile:v", "high", "-crf", "18", "-preset", "medium", "-r", FPS,
          "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-movflags", "+faststart", "-t", f"{total:.3f}", final], cwd=WORK)
 
-    lines = ["PACT - The AI Payment Guardian: narration script", "Voice: Google Gemini text-to-speech, voice Charon (generated by demo/tools/tts_gemini.py)", ""]
-    t = 0.0
-    for c in clips:
+    lines = ["PACT - The AI Payment Authorization Gateway: narration script", "Voice: Google Gemini text-to-speech, voice Charon (generated by demo/tools/tts_gemini.py)", ""]
+    for c, t in zip(clips, starts):
         lines.append(f"[{int(t // 60)}:{t % 60:04.1f}] {c['caption'].replace('|', ' ')}")
-        t += c["dur"]
     lines.append(f"\nTotal running time: {int(total // 60)}:{total % 60:04.1f}")
     (DEMO / "pact-narration.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     # Raw application recording: the three app takes back to back, original timing, no narration.
-    raws = [build_take(t) for t in ("app1", "app2", "app3") if (FRAMES / t / "frames.json").exists()]
+    raws = [build_take(t) for t in ("app1", "app2", "app3", "app4") if (FRAMES / t / "frames.json").exists()]
     (WORK / "raw.txt").write_text("\n".join(f"file '{r.as_posix()}'" for r in raws), encoding="utf-8")
     run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", WORK / "raw.txt", "-c:v", "libx264", "-crf", "21", "-preset", "medium",
          "-pix_fmt", "yuv420p", "-movflags", "+faststart", DEMO / "pact-recording-raw.mp4"])

@@ -4,6 +4,7 @@
 //   app1    Command Center, mandate, the blocked $125 purchase
 //   app2    the $89 purchase: policy pass, human approval, PayPal Sandbox checkout, verified capture
 //   app3    second approval invalidated by a catalog price change, audit trail, final Command Center
+//   app4    Agent Gateway: connected third-party agent, its requests, and one awaiting approval
 //   card:<name>  record demo/pact-demo-assets/<name>.html (title cards)
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -19,7 +20,7 @@ const PROMPT_OK = 'I need a wireless mechanical keyboard for coding, under $100.
 const PROMPT_SECOND = 'Order one more Keychron K8 Pro keyboard for my teammate.';
 
 async function ask(page, p, text) {
-  await p.click(page.getByRole('link', { name: 'Assistant' }));
+  await p.click(page.getByRole('link', { name: 'Reference agent' }));
   await page.getByPlaceholder('Describe what you want to buy…').waitFor();
   await sleep(700);
   await p.type(page.getByPlaceholder('Describe what you want to buy…'), text);
@@ -221,12 +222,33 @@ const takes = {
     await sleep(1800);
     rec.mark('audit_end');
 
-    await p.click(page.getByRole('link', { name: 'Command Center' }));
+    await p.click(page.getByRole('link', { name: 'Control Center' }));
     await page.getByText('Authorized spending').waitFor();
     await sleep(900);
     rec.mark('final_dash');
     await p.hover(page.getByText('Authorized spending'));
     await sleep(4500);
+    rec.mark('end');
+  },
+
+  async app4(page, p, rec) {
+    await page.goto(BASE + '/agents');
+    await page.getByRole('heading', { name: 'Connected agents' }).waitFor();
+    await page.getByText('Gemini agent via MCP').first().waitFor();
+    await sleep(1200);
+    rec.mark('agents');
+    await p.hover(page.getByText('Awaiting you'));
+    await sleep(2200);
+    await p.hover(page.getByText('What it can never do'));
+    await sleep(2600);
+    await p.click(page.getByText('Anker 7-in-1 USB-C Hub Adapter').first(), { pause: 500 });
+    await page.getByText(/Requested by/).waitFor();
+    await sleep(700);
+    rec.mark('agent_request');
+    await p.hover(page.getByText(/Requested by/));
+    await sleep(3200);
+    await p.hover(page.getByRole('button', { name: /Approve/ }));
+    await sleep(2200);
     rec.mark('end');
   },
 };
