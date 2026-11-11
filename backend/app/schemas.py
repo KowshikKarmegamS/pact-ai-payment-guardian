@@ -230,6 +230,8 @@ class ProposalOut(BaseModel):
     ai_model: Optional[str] = None
     ai_fallback_reason: Optional[str] = None
     supersedes_id: Optional[str] = None
+    agent_id: Optional[str] = None
+    agent_name: Optional[str] = None
     alternatives: Optional[List[Dict[str, Any]]] = None
     policy_checks: Optional[List[Dict[str, Any]]] = None
     remaining_budget_at_decision: Optional[Decimal] = None

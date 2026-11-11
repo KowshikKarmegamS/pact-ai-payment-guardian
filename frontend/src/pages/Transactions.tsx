@@ -103,7 +103,7 @@ export const Transactions: React.FC = () => {
                           <ProductTile name={p.product_name} category={p.category} size="sm" />
                           <div className="min-w-0">
                             <p className="truncate text-fg">{p.product_name}</p>
-                            <p className="truncate text-[11px] text-faint">{p.merchant} · qty {p.quantity}</p>
+                            <p className="truncate text-[11px] text-faint">{p.merchant} · qty {p.quantity} · {p.agent_name ?? 'Reference agent'}</p>
                           </div>
                         </div>
                       </td>

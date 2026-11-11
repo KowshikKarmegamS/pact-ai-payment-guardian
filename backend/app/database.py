@@ -67,6 +67,9 @@ _ADDITIVE_COLUMNS = [
     ("proposals", "captured_at", "DATETIME"),
     ("proposals", "paypal_debug_id", "VARCHAR(100)"),
     ("proposals", "capture_lock_expires", "FLOAT"),
+    ("proposals", "agent_id", "VARCHAR(36)"),
+    ("proposals", "agent_name", "VARCHAR(100)"),
+    ("proposals", "agent_request_id", "VARCHAR(100)"),
 ]
 
 

@@ -114,6 +114,7 @@ export function aiLabel(provider?: string | null, model?: string | null): string
   if (provider === 'heuristic') return 'Keyword fallback (not AI)';
   if (provider === 're-evaluation') return 'Re-evaluation (no AI call)';
   if (provider === 'user-selected') return 'Selected by you';
+  if (provider === 'external-agent') return model ? `External agent · ${model}` : 'External agent via Agent Gateway';
   return 'Unknown source';
 }
 
@@ -121,7 +122,7 @@ export function aiLabel(provider?: string | null, model?: string | null): string
 // Audit events: label, tone, category and a plain-language explanation.
 // ---------------------------------------------------------------------------
 
-export type EventCategory = 'mandate' | 'ai' | 'policy' | 'approval' | 'paypal' | 'catalog';
+export type EventCategory = 'mandate' | 'ai' | 'policy' | 'approval' | 'paypal' | 'catalog' | 'agent';
 
 interface EventDef {
   label: string;
@@ -159,6 +160,11 @@ const EVENTS: Record<string, EventDef> = {
   PAYPAL_CAPTURE_UNVERIFIED: { label: 'Capture unverified', tone: 'warn', category: 'paypal', alert: true },
   PAYPAL_CAPTURE_AMOUNT_MISMATCH: { label: 'Captured amount mismatch', tone: 'bad', category: 'paypal', alert: true },
   DUPLICATE_CAPTURE_PREVENTED: { label: 'Duplicate capture prevented', tone: 'ok', category: 'paypal', alert: true },
+  AGENT_REGISTERED: { label: 'Agent connected', tone: 'accent', category: 'agent' },
+  AGENT_REVOKED: { label: 'Agent access revoked', tone: 'bad', category: 'agent', alert: true },
+  AGENT_PURCHASE_REQUESTED: { label: 'Agent requested a purchase', tone: 'neutral', category: 'agent' },
+  AGENT_AUTHORITY_CHECKED: { label: 'Agent checked its authority', tone: 'neutral', category: 'agent' },
+  AGENT_MANDATE_DENIED: { label: 'Agent used an ungranted mandate', tone: 'bad', category: 'agent', alert: true },
   CATALOG_PRODUCT_CHANGED: { label: 'Catalog price changed', tone: 'caution', category: 'catalog' },
   APPROVAL_REVALIDATION_FAILED: { label: 'Approval revalidation failed', tone: 'bad', category: 'approval', alert: true },
 };
@@ -194,6 +200,16 @@ export function explainEvent(e: AuditLogEntry): string {
       const fb = str(d.fallback_reason);
       return `${who} recommended catalog item #${str(d.product_id) ?? '?'} × ${str(d.quantity) ?? '1'}.${fb ? ` ${fb}` : ''}`;
     }
+    case 'AGENT_REGISTERED':
+      return `Agent “${str(d.agent_name) ?? ''}” connected to the Agent Gateway (key ${str(d.key_prefix) ?? ''}).`;
+    case 'AGENT_REVOKED':
+      return `Agent “${str(d.agent_name) ?? ''}” lost access; its key no longer works.`;
+    case 'AGENT_PURCHASE_REQUESTED':
+      return `${str(d.agent_name) ?? 'An agent'} asked for catalog item #${str(d.product_id) ?? '?'} × ${str(d.quantity) ?? '1'}: “${str(d.reason) ?? ''}”`;
+    case 'AGENT_AUTHORITY_CHECKED':
+      return `${str(d.agent_name) ?? 'An agent'} dry-ran ${money(amount, cur)}: ${d.allowed ? 'within policy' : `not allowed (${arr(d.violations)[0] ?? 'policy'})`}.`;
+    case 'AGENT_MANDATE_DENIED':
+      return `${str(d.agent_name) ?? 'An agent'} tried a mandate it was never granted. Refused.`;
     case 'PROPOSAL_CREATED_BY_USER':
       return `User chose catalog item #${str(d.product_id) ?? '?'} from the listed alternatives.`;
     case 'POLICY_CHECK_PASSED':

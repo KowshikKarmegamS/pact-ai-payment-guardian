@@ -112,6 +112,8 @@ export interface Proposal {
   ai_model?: string | null;
   ai_fallback_reason?: string | null;
   supersedes_id?: string | null;
+  agent_id?: string | null;
+  agent_name?: string | null;
   alternatives?: Alternative[] | null;
   policy_checks?: PolicyCheck[] | null;
   remaining_budget_at_decision?: DecimalString | null;
@@ -237,4 +239,26 @@ export interface SystemStatus {
     oauth: { checked: boolean; ok?: boolean; code?: string; message?: string };
   };
   currency: string;
+}
+
+export interface ConnectedAgent {
+  id: string;
+  name: string;
+  description?: string | null;
+  key_prefix: string;
+  mandate_ids: string[];
+  mandate_names: string[];
+  status: 'active' | 'revoked';
+  created_at: string;
+  last_used_at?: string | null;
+  revoked_at?: string | null;
+  requests: number;
+  blocked: number;
+  awaiting_approval: number;
+  captured: number;
+}
+
+export interface ConnectedAgentCreated extends ConnectedAgent {
+  /** Shown once; PACT stores only its hash. */
+  api_key: string;
 }

@@ -261,7 +261,7 @@ export const ShoppingAssistant: React.FC = () => {
     [submitting, addCase, reloadMandates, toast],
   );
 
-  // "Ask PACT" on the Command Center hands over ?q=...
+  // "Ask PACT" on the Control Center hands over ?q=...
   useEffect(() => {
     const q = params.get('q');
     if (!q || autoRan.current || !mandateId) return;
@@ -276,9 +276,9 @@ export const ShoppingAssistant: React.FC = () => {
   return (
     <div>
       <PageHeader
-        eyebrow="Shopping assistant"
+        eyebrow="Reference agent · built-in Gemini shopping assistant"
         title="What do you need?"
-        description="The assistant picks one catalog item. Prices and merchants come from the catalog, the decision comes from your mandate, and payment needs your approval."
+        description="One example of an AI agent using PACT. It picks one catalog item; prices and merchants come from the catalog, the decision comes from your mandate, and payment needs your approval. External agents use the same path through the Agent Gateway."
       />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">

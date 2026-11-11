@@ -3,6 +3,7 @@ import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { ToastProvider } from './components/Toast';
 import { EmptyState } from './components/ui';
+import { Agents } from './pages/Agents';
 import { AuditTrail } from './pages/AuditTrail';
 import { Authorization } from './pages/Authorization';
 import { Catalog } from './pages/Catalog';
@@ -17,7 +18,7 @@ const NotFound: React.FC = () => (
     description="That address does not exist in PACT."
     action={
       <Link to="/" className="text-sm font-medium text-accent hover:underline">
-        Back to the Command Center
+        Back to the Control Center
       </Link>
     }
   />
@@ -31,6 +32,7 @@ export const App: React.FC = () => (
           <Route index element={<Dashboard />} />
           <Route path="assistant" element={<ShoppingAssistant />} />
           <Route path="mandates" element={<Mandates />} />
+          <Route path="agents" element={<Agents />} />
           <Route path="transactions" element={<Transactions />} />
           <Route path="proposals/:id" element={<Authorization />} />
           <Route path="audit" element={<AuditTrail />} />

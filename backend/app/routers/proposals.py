@@ -126,6 +126,9 @@ def _create_and_evaluate(
     ai_audit: Optional[dict] = None,
     catalog: Optional[List[Product]] = None,
     origin_event: str = "AI_RECOMMENDATION_GENERATED",
+    agent_id: Optional[str] = None,
+    agent_name: Optional[str] = None,
+    agent_request_id: Optional[str] = None,
 ) -> tuple:
     """Price the item from the catalog, run the policy engine, persist the decision."""
     settings = get_settings()
@@ -148,6 +151,9 @@ def _create_and_evaluate(
         ai_model=model,
         ai_fallback_reason=fallback_reason,
         supersedes_id=supersedes_id,
+        agent_id=agent_id,
+        agent_name=agent_name,
+        agent_request_id=agent_request_id,
     )
     db.add(proposal)
     db.flush()  # assigns id, idempotency key
@@ -173,6 +179,7 @@ def _create_and_evaluate(
         log_audit_event(db, origin_event, "Proposal", proposal.id, ai_audit)
     log_audit_event(db, "POLICY_CHECK_PASSED" if policy.passed else "POLICY_CHECK_FAILED", "Proposal", proposal.id, {
         "mandate_id": mandate.id,
+        "requested_by": proposal.agent_name or "PACT reference shopping agent",
         "product_name": proposal.product_name,
         "merchant": proposal.merchant,
         "category": proposal.category,
@@ -375,6 +382,7 @@ def re_evaluate_proposal(proposal_id: str, db: Session = Depends(get_db)):
         prompt=old.user_prompt, reasoning=old.ai_reasoning,
         provider="re-evaluation", model=None,
         fallback_reason=None, supersedes_id=old.id,
+        agent_id=old.agent_id, agent_name=old.agent_name,
     )
     if old.status == ProposalStatus.PAYPAL_CANCELLED:
         old.status = ProposalStatus.APPROVAL_EXPIRED

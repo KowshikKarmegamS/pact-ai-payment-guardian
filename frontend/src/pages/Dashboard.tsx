@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, ArrowUpRight, Ban, Bot, CreditCard, Scale, ShieldCheck, Sparkles, UserCheck, Wallet } from 'lucide-react';
+import { ArrowRight, ArrowUpRight, Ban, Bot, CreditCard, Plug, Scale, ShieldCheck, Sparkles, UserCheck, Wallet } from 'lucide-react';
 import { pactApi } from '../api/pact';
 import { BudgetRing, DecisionChart, Legend } from '../components/charts';
 import { ProductTile } from '../components/ProductTile';
@@ -9,7 +9,7 @@ import { MANDATE_STATUS, dateOnly, eventMeta, explainEvent, money, timeAgo, toNu
 import { useAsync } from '../lib/useAsync';
 
 const PIPELINE = [
-  { icon: Bot, title: 'AI recommends', text: 'One catalog item. Advisory only.' },
+  { icon: Bot, title: 'Any AI agent requests', text: 'Claude, ChatGPT or yours, via API or MCP.' },
   { icon: Scale, title: 'Policy engine authorizes', text: 'Deterministic rules from your mandate.' },
   { icon: UserCheck, title: 'Human approves', text: 'Bound to the exact purchase.' },
   { icon: CreditCard, title: 'PayPal executes', text: 'Verified capture, never assumed.' },
@@ -66,14 +66,14 @@ export const Dashboard: React.FC = () => {
         <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-accent/10 blur-3xl" />
         <div className="grid gap-8 p-6 lg:grid-cols-[1.25fr_1fr] lg:p-8">
           <div>
-            <Eyebrow>The AI Payment Guardian</Eyebrow>
+            <Eyebrow>PACT Control Center</Eyebrow>
             <h1 className="mt-3 max-w-xl text-[30px] font-semibold leading-[1.15] tracking-tight text-fg sm:text-[34px]">
-              Give AI the power to act,{' '}
-              <span className="bg-gradient-to-r from-accent to-violet bg-clip-text text-transparent">not unrestricted access to your money.</span>
+              The authorization gateway{' '}
+              <span className="bg-gradient-to-r from-accent to-violet bg-clip-text text-transparent">for AI-powered commerce.</span>
             </h1>
             <p className="mt-3 max-w-lg text-sm leading-relaxed text-muted">
-              PACT sits between a shopping agent and PayPal. The agent can only propose. Your spending mandate, enforced by deterministic code, decides what
-              is allowed, and nothing is paid without your explicit approval.
+              Let any AI agent shop for you, only within the limits you set. Agents ask PACT for authority; your mandate, enforced by deterministic
+              code, decides; you approve the exact purchase; PayPal executes. No agent ever holds the power to pay.
             </p>
             <ol className="mt-6 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               {PIPELINE.map((s, i) => (
@@ -94,9 +94,16 @@ export const Dashboard: React.FC = () => {
           <form onSubmit={submitAsk} className="flex flex-col justify-between rounded-xl border border-line-strong bg-raised/80 p-5">
             <div>
               <div className="flex items-center gap-2 text-sm font-medium text-fg">
-                <Sparkles className="h-4 w-4 text-accent" /> Ask PACT
+                <Sparkles className="h-4 w-4 text-accent" /> Try the reference agent
               </div>
-              <p className="mt-1 text-xs text-muted">Describe what you need. PACT recommends, checks your mandate, then waits for you.</p>
+              <p className="mt-1 text-xs text-muted">
+                Describe what you need. The built-in Gemini agent recommends, PACT checks your mandate, then waits for you. Or{' '}
+                <Link to="/agents" className="inline-flex items-center gap-1 text-accent hover:underline">
+                  <Plug className="h-3 w-3" />
+                  connect your own agent
+                </Link>
+                .
+              </p>
               <label htmlFor="ask" className="sr-only">
                 Shopping request
               </label>

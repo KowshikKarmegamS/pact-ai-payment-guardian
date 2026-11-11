@@ -6,6 +6,8 @@ import type {
   MandateInput,
   PaymentStateResponse,
   PayPalOrderResponse,
+  ConnectedAgent,
+  ConnectedAgentCreated,
   Product,
   ProductUpdateResult,
   Proposal,
@@ -45,6 +47,12 @@ export const pactApi = {
     api.post<PaymentStateResponse>(`/payments/${proposalId}/verify`, orderToken ? { order_token: orderToken } : {}),
   cancelPayPalCheckout: (proposalId: string) => api.post<PaymentStateResponse>(`/payments/${proposalId}/cancel`),
   capturePayPalPayment: (proposalId: string) => api.post<PaymentStateResponse>(`/payments/${proposalId}/capture`),
+
+  // Agent Gateway (Control Center side)
+  getAgents: () => api.get<ConnectedAgent[]>('/agents'),
+  createAgent: (body: { name: string; description?: string; mandate_ids: string[] }) =>
+    api.post<ConnectedAgentCreated>('/agents', body),
+  revokeAgent: (id: string) => api.post<ConnectedAgent>(`/agents/${id}/revoke`),
 
   // Audit
   getAuditLogs: (limit = 300) => api.get<AuditLogEntry[]>(`/audit?limit=${limit}`),

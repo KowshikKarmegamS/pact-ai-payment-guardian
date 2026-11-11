@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from app.catalog import seed_catalog, seed_mandates
 from app.config import get_settings
 from app.database import SessionLocal, init_db
-from app.routers import audit, health, mandates, payments, products, proposals
+from app.routers import agents, audit, gateway, health, mandates, payments, products, proposals
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("pact.app")
@@ -44,13 +44,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
 
 app = FastAPI(
-    title="PACT – AI Payment Guardian API",
+    title="PACT – AI Payment Authorization Gateway",
     description=(
-        "AI recommends → deterministic code authorizes → human approves → PayPal executes. "
-        "Spending mandates, a deterministic policy engine, fingerprint-bound human approval "
-        "and verified PayPal Sandbox capture."
+        "The authorization gateway for AI-powered commerce. Any AI agent (Claude, ChatGPT, custom) asks PACT "
+        "for spending authority through the Agent Gateway (`/api/agent/v1`, or the MCP server in "
+        "`integrations/mcp`). A deterministic policy engine decides, a human approves the exact purchase, "
+        "and PayPal executes. Agents can request purchases but can never approve or capture a payment."
     ),
-    version="1.1.0",
+    version="1.2.0",
     lifespan=lifespan,
 )
 
@@ -90,7 +91,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
-for r in (health, products, mandates, proposals, payments, audit):
+for r in (health, products, mandates, proposals, payments, audit, agents, gateway):
     app.include_router(r.router, prefix="/api")
 
 

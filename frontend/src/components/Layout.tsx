@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Activity, CreditCard, LayoutDashboard, Menu, ScrollText, ShieldCheck, Sparkles, Store, X } from 'lucide-react';
+import { Activity, CreditCard, LayoutDashboard, Menu, Plug, ScrollText, ShieldCheck, Sparkles, Store, X } from 'lucide-react';
 import { pactApi } from '../api/pact';
 import { aiLabel } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
@@ -8,9 +8,10 @@ import type { SystemStatus } from '../types';
 import { cx } from './ui';
 
 const NAV = [
-  { to: '/', label: 'Command Center', icon: LayoutDashboard },
-  { to: '/assistant', label: 'Assistant', icon: Sparkles },
+  { to: '/', label: 'Control Center', icon: LayoutDashboard },
   { to: '/mandates', label: 'Mandates', icon: ScrollText },
+  { to: '/agents', label: 'Agents', icon: Plug },
+  { to: '/assistant', label: 'Reference agent', icon: Sparkles },
   { to: '/transactions', label: 'Transactions', icon: CreditCard, match: '/proposals' },
   { to: '/audit', label: 'Audit Trail', icon: Activity },
   { to: '/catalog', label: 'Catalog', icon: Store },
@@ -86,7 +87,7 @@ export const Layout: React.FC = () => {
           <Logo />
           <div>
             <p className="text-[15px] font-semibold leading-none tracking-wide text-fg">PACT</p>
-            <p className="mt-1 text-[11px] text-faint">AI Payment Guardian</p>
+            <p className="mt-1 text-[11px] text-faint">Authorization Gateway</p>
           </div>
         </div>
         <nav className="flex-1 space-y-0.5 px-3" aria-label="Main">

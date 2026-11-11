@@ -312,6 +312,10 @@ export const Authorization: React.FC = () => {
             <p className="mt-1 text-sm text-muted">
               Sold by <span className="text-fg">{p.merchant}</span> · {p.category} · {p.quantity} × {money(p.price, p.currency)}
             </p>
+            <p className="mt-1.5 text-xs text-faint">
+              Requested by <span className="text-muted">{p.agent_name ?? 'PACT reference shopping agent'}</span>
+              {p.agent_name ? ' · through the Agent Gateway' : ''}
+            </p>
           </div>
           <div className="sm:text-right">
             <p className="text-[11px] uppercase tracking-wider text-faint">Proposed amount</p>
@@ -370,7 +374,10 @@ export const Authorization: React.FC = () => {
             <CardHeader title="Purchase summary" subtitle="Advisory. Price, merchant and category come from the catalog." icon={<Sparkles className="h-4 w-4" />} action={<Badge tone={isAIProvider(p.ai_provider) ? 'accent' : 'neutral'}>{aiLabel(p.ai_provider, p.ai_model)}</Badge>} />
             <div className="space-y-3 p-5 text-sm">
               {p.user_prompt && <p className="text-muted"><span className="text-faint">Request: </span>“{p.user_prompt}”</p>}
-              <p className="leading-relaxed text-fg/90">{p.ai_reasoning}</p>
+              <p className="leading-relaxed text-fg/90">
+                {p.agent_name && <span className="text-faint">{p.agent_name}’s reason: </span>}
+                {p.ai_reasoning}
+              </p>
               {receipt.product?.description && <p className="text-xs leading-relaxed text-faint">{receipt.product.description}</p>}
               {p.ai_fallback_reason && <p className="text-xs text-warn">Fallback used: {p.ai_fallback_reason}</p>}
             </div>
@@ -444,7 +451,7 @@ export const Authorization: React.FC = () => {
                   <div className="min-w-0 text-xs leading-relaxed text-muted">
                     <CopyValue value={p.approval_fingerprint ?? p.proposal_fingerprint ?? ''} display={shortHash(p.approval_fingerprint ?? p.proposal_fingerprint)} />
                     <p className="mt-0.5">
-                      SHA-256 of the product, merchant, price, quantity, currency and mandate rules.{' '}
+                      SHA-256 of the product, merchant, price, quantity, currency, mandate rules{p.agent_name ? ' and requesting agent' : ''}.{' '}
                       {p.approved_at ? (
                         <>Approved {dateTime(p.approved_at)}. <span className={approvalValid ? 'text-ok' : 'text-caution'}>{approvalValid ? 'Still intact.' : 'Void: it no longer matches.'}</span></>
                       ) : (

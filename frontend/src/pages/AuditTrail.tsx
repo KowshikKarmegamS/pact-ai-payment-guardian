@@ -18,6 +18,7 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: 'mandate', label: 'Mandates' },
   { value: 'ai', label: 'AI' },
   { value: 'catalog', label: 'Catalog' },
+  { value: 'agent', label: 'Agents' },
 ];
 
 const SENSITIVE = /(secret|password|token|authorization|api_?key|card|cvv)/i;

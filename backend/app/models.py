@@ -158,6 +158,11 @@ class Proposal(Base):
     supersedes_id = Column(String(36), nullable=True)
     alternatives = Column(JSON, nullable=True)
 
+    # --- Requesting agent (set when an external agent called the Agent Gateway) ---
+    agent_id = Column(String(36), nullable=True, index=True)
+    agent_name = Column(String(100), nullable=True)
+    agent_request_id = Column(String(100), nullable=True)  # the agent's own idempotency key
+
     # --- Deterministic policy decision ---
     policy_checks = Column(JSON, nullable=True)
     remaining_budget_at_decision = Column(Numeric(10, 2, asdecimal=True), nullable=True)
@@ -208,6 +213,27 @@ class Proposal(Base):
             f"<Proposal(id='{self.id}', product='{self.product_name}', "
             f"total={self.total_amount}, status='{self.status}')>"
         )
+
+
+class AgentClient(Base):
+    """An AI agent that may request purchases through the Agent Gateway.
+
+    The agent authenticates with a key that is shown once; only its SHA-256 hash is stored.
+    An agent can search, check authority, dry-run and *request* purchases on the mandates it
+    is bound to. It can never approve a proposal or move money.
+    """
+
+    __tablename__ = "agent_clients"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String(100), nullable=False)
+    description = Column(String(300), nullable=True)
+    key_prefix = Column(String(24), nullable=False)
+    key_hash = Column(String(64), nullable=False, unique=True, index=True)
+    mandate_ids = Column(JSON, nullable=False, default=list)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class AuditLog(Base):

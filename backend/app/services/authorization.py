@@ -56,7 +56,7 @@ def _canon_restrictions(r: Any) -> Dict[str, Any]:
 
 
 def canonical_snapshot(proposal: Proposal, mandate: Mandate) -> Dict[str, Any]:
-    return {
+    snap = {
         "v": FINGERPRINT_VERSION,
         "proposal": {
             "id": proposal.id,
@@ -81,6 +81,11 @@ def canonical_snapshot(proposal: Proposal, mandate: Mandate) -> Dict[str, Any]:
             "restrictions": _canon_restrictions(mandate.restrictions),
         },
     }
+    # Who asked is part of what the human approves. Added only when an external agent asked,
+    # so fingerprints of earlier proposals are unchanged.
+    if getattr(proposal, "agent_id", None):
+        snap["requested_by"] = {"agent_id": proposal.agent_id, "agent_name": proposal.agent_name}
+    return snap
 
 
 def fingerprint_of(snapshot: Dict[str, Any]) -> str:
@@ -105,6 +110,8 @@ _LABELS = {
     ("mandate", "allowed_merchants"): "Allowed merchants",
     ("mandate", "allowed_categories"): "Allowed categories",
     ("mandate", "restrictions"): "Mandate restrictions",
+    ("requested_by", "agent_id"): "Requesting agent",
+    ("requested_by", "agent_name"): "Requesting agent name",
 }
 
 
@@ -113,8 +120,8 @@ def describe_changes(before: Optional[Dict[str, Any]], after: Dict[str, Any]) ->
     if not before:
         return ["No approved snapshot is on record for this proposal."]
     changes: List[str] = []
-    for section in ("proposal", "mandate"):
-        b, a = before.get(section, {}), after.get(section, {})
+    for section in ("proposal", "mandate", "requested_by"):
+        b, a = before.get(section) or {}, after.get(section) or {}
         for key in sorted(set(b) | set(a)):
             if b.get(key) != a.get(key):
                 label = _LABELS.get((section, key), f"{section}.{key}")
