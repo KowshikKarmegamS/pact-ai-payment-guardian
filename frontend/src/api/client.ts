@@ -59,6 +59,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   if (!response.ok) {
     const { message, code } = extractError(data, response.statusText || `Request failed (${response.status})`);
+    if (code === 'OWNER_AUTH_REQUIRED' || code === 'OWNER_AUTH_NOT_CONFIGURED') {
+      // The Control Center session ended or never started: OwnerGate shows the sign-in screen.
+      window.dispatchEvent(new CustomEvent('pact:owner-auth', { detail: code }));
+    }
     throw new ApiError(message, response.status, code, data);
   }
   return data as T;

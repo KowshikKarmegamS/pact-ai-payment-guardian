@@ -40,3 +40,9 @@ services:
         sync: false
       - key: APP_SECRET_KEY
         generateValue: true
+      # Owner sign-in for the Control Center. REQUIRE_OWNER_AUTH makes the service fail closed:
+      # mandates, approvals, payments and agent management are refused until OWNER_PASSWORD is set.
+      - key: REQUIRE_OWNER_AUTH
+        value: "true"
+      - key: OWNER_PASSWORD
+        sync: false

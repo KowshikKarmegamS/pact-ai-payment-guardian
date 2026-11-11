@@ -14,7 +14,8 @@ from fastapi.staticfiles import StaticFiles
 from app.catalog import seed_catalog, seed_mandates
 from app.config import get_settings
 from app.database import SessionLocal, init_db
-from app.routers import agents, audit, gateway, health, mandates, payments, products, proposals
+from app.routers import agents, audit, gateway, health, mandates, owner, payments, products, proposals
+from app.services import owner_auth
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("pact.app")
@@ -25,6 +26,10 @@ settings = get_settings()
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if not settings.paypal_is_sandbox:
         logger.error("PAYPAL_BASE_URL is not a PayPal Sandbox endpoint; PayPal calls will be refused.")
+    if owner_auth.misconfigured():
+        logger.error("REQUIRE_OWNER_AUTH is on but OWNER_PASSWORD is not set: owner routes are refused until it is.")
+    elif not owner_auth.auth_enabled():
+        logger.warning("OWNER_PASSWORD is not set: the Control Center is open to anyone who can reach it (local demo mode).")
     init_db()
     db = SessionLocal()
     try:
@@ -64,6 +69,20 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def require_owner(request: Request, call_next):
+    """Owner-facing /api routes need the owner session when owner auth is on (or required)."""
+    if request.method != "OPTIONS" and owner_auth.needs_owner(request.url.path):
+        if owner_auth.misconfigured():
+            return JSONResponse(status_code=503, content={"detail": {
+                "code": "OWNER_AUTH_NOT_CONFIGURED",
+                "message": "Owner sign-in is required on this deployment but OWNER_PASSWORD is not set."}})
+        if owner_auth.auth_enabled() and not owner_auth.token_valid(request.cookies.get(owner_auth.COOKIE_NAME)):
+            return JSONResponse(status_code=401, content={"detail": {
+                "code": "OWNER_AUTH_REQUIRED", "message": "Sign in to the PACT Control Center to continue."}})
+    return await call_next(request)
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     errors = []
@@ -91,7 +110,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
-for r in (health, products, mandates, proposals, payments, audit, agents, gateway):
+for r in (health, owner, products, mandates, proposals, payments, audit, agents, gateway):
     app.include_router(r.router, prefix="/api")
 
 

@@ -6,6 +6,7 @@ import { aiLabel } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
 import type { SystemStatus } from '../types';
 import { cx } from './ui';
+import { SignOutButton } from './OwnerGate';
 
 const NAV = [
   { to: '/', label: 'Control Center', icon: LayoutDashboard },
@@ -118,6 +119,7 @@ export const Layout: React.FC = () => {
         </nav>
         <div className="space-y-3 p-4">
           <SystemPanel status={status.data} error={status.error} />
+          <SignOutButton />
           <p className="px-1 text-[10px] leading-relaxed text-faint">PayPal Sandbox demo. Test accounts only; no real money moves.</p>
         </div>
       </aside>

@@ -183,11 +183,13 @@ async def _call_gemini(user_prompt: str, catalog: List[Product]) -> AIAgentRecom
     try:
         async with httpx.AsyncClient(timeout=settings.AI_TIMEOUT_SECONDS) as client:
             response = await post(client, model)
-            if response.status_code in (500, 503):
-                # Transient overload ("model is experiencing high demand"): try the backup model once,
-                # or the same model again if no backup is configured. After that PACT falls back honestly.
+            has_backup = bool(backup) and backup != model
+            if response.status_code in (500, 503) or (response.status_code == 429 and has_backup):
+                # Overload (500/503): try the backup model once, or the same model again if there is none.
+                # Rate limit / free-tier quota (429): quotas are per model, so only the backup can help.
+                # After that PACT falls back honestly to the labelled keyword heuristic.
                 await asyncio.sleep(GEMINI_RETRY_DELAY_SECONDS)
-                if backup and backup != model:
+                if has_backup:
                     logger.info("Gemini %s returned HTTP %s; trying backup model %s", model, response.status_code, backup)
                     model = backup
                 else:

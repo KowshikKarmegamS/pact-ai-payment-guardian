@@ -7,6 +7,7 @@ import type {
   PaymentStateResponse,
   PayPalOrderResponse,
   ConnectedAgent,
+  OwnerSession,
   ConnectedAgentCreated,
   Product,
   ProductUpdateResult,
@@ -16,6 +17,11 @@ import type {
 } from '../types';
 
 export const pactApi = {
+  // Owner session (Control Center sign-in)
+  getOwnerSession: () => api.get<OwnerSession>('/owner/session'),
+  ownerLogin: (password: string) => api.post<OwnerSession>('/owner/login', { password }),
+  ownerLogout: () => api.post<OwnerSession>('/owner/logout'),
+
   getStatus: (checkPayPal = false) => api.get<SystemStatus>(`/status${checkPayPal ? '?check_paypal=true' : ''}`),
 
   // Mandates

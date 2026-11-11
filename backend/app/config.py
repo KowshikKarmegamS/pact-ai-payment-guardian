@@ -51,6 +51,12 @@ class Settings(BaseSettings):
     # Public URL of the web app. PayPal redirects the buyer here after checkout.
     APP_BASE_URL: str = "http://localhost:5173"
     APP_SECRET_KEY: str = "change-this-to-a-random-secret"
+    # Owner (Control Center) authentication. When OWNER_PASSWORD is set, every owner-facing /api route
+    # (mandates, approvals, payments, agents, catalog, audit) needs a signed session cookie.
+    # REQUIRE_OWNER_AUTH=true makes a deployment fail closed: owner routes are refused until a password is set.
+    OWNER_PASSWORD: str = ""
+    REQUIRE_OWNER_AUTH: bool = False
+    OWNER_SESSION_HOURS: int = 12
     CORS_ORIGINS: Union[str, List[str]] = "http://localhost:5173,http://localhost:3000"
     # Directory containing the built React app. When it exists, FastAPI serves it.
     FRONTEND_DIST: str = "../frontend/dist"

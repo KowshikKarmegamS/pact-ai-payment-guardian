@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
+import { OwnerGate } from './components/OwnerGate';
 import { ToastProvider } from './components/Toast';
 import { EmptyState } from './components/ui';
 import { Agents } from './pages/Agents';
@@ -27,6 +28,7 @@ const NotFound: React.FC = () => (
 export const App: React.FC = () => (
   <ToastProvider>
     <BrowserRouter>
+      <OwnerGate>
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<Dashboard />} />
@@ -40,6 +42,7 @@ export const App: React.FC = () => (
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
+      </OwnerGate>
     </BrowserRouter>
   </ToastProvider>
 );

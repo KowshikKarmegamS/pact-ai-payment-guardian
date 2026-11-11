@@ -262,3 +262,9 @@ export interface ConnectedAgentCreated extends ConnectedAgent {
   /** Shown once; PACT stores only its hash. */
   api_key: string;
 }
+
+export interface OwnerSession {
+  auth_enabled: boolean;
+  authenticated: boolean;
+  misconfigured: boolean;
+}

@@ -18,7 +18,8 @@
    "to": "end",
    "fit": "pad",
    "say": "A I agents can now shop for us. But to pay, we hand them a payment method with no limits. One injected instruction, or one hallucinated price, and real money moves before anyone approves it.",
-   "caption": "AI agents can now shop for us.|But to pay, we hand them a payment method with no limits.|One injected instruction, or one hallucinated price,|and real money moves before anyone approves it."
+   "caption": "AI agents can now shop for us.|But to pay, we hand them a payment method with no limits.|One injected instruction, or one hallucinated price,|and real money moves before anyone approves it.",
+   "toOffset": -1.2
   },
   {
    "id": "03-dash",

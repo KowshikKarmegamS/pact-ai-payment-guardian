@@ -1,6 +1,12 @@
 # Devpost submission draft — PACT: The AI Payment Authorization Gateway
 
-> Fill in the video link once it is published. Do not add a hosted URL unless it has been deployed and checked.
+## Links
+
+- **Repository:** https://github.com/KowshikKarmegamS/pact-ai-payment-guardian
+- **Demo video (2:49, in the repository):** https://github.com/KowshikKarmegamS/pact-ai-payment-guardian/blob/main/demo/pact-hackathon-final.mp4
+  (direct file: https://github.com/KowshikKarmegamS/pact-ai-payment-guardian/raw/main/demo/pact-hackathon-final.mp4).
+  Devpost's video field expects YouTube, Vimeo or Youku: upload this same file there and paste that link.
+- **Live demo:** none. PACT is not deployed; run it locally (README → Run it locally).
 
 ## Tagline
 
@@ -41,7 +47,7 @@ The demo includes a product listing whose description instructs AI agents that i
 
 ## How we built it
 
-An Agent Gateway API with per-agent scoped keys, and a dependency-free MCP server (JSON-RPC over stdio). FastAPI, SQLAlchemy 2, SQLite, Pydantic, httpx (Gemini REST API) and the OpenAI SDK on the backend; React, Vite, TypeScript, Tailwind and Lucide on the frontend. The policy engine is a pure module with no database or network access. Money is `Decimal` throughout. Capture safety combines an atomic database lock, a stable PayPal-Request-Id, and reconciliation through order lookup after timeouts. 139 automated backend tests run against an in-memory PayPal fake, so the suite can never charge anyone.
+An Agent Gateway API with per-agent scoped keys, and a dependency-free MCP server (JSON-RPC over stdio). FastAPI, SQLAlchemy 2, SQLite, Pydantic, httpx (Gemini REST API) and the OpenAI SDK on the backend; React, Vite, TypeScript, Tailwind and Lucide on the frontend. The policy engine is a pure module with no database or network access. Money is `Decimal` throughout. Capture safety combines an atomic database lock, a stable PayPal-Request-Id, and reconciliation through order lookup after timeouts. 148 automated backend tests (all passing) run against an in-memory PayPal fake, so the suite can never charge anyone. The Control Center is protected by owner sign-in (`OWNER_PASSWORD`, signed HttpOnly cookie), and deployments fail closed without it.
 
 ## Challenges
 
@@ -56,7 +62,7 @@ The interesting security boundary in agentic commerce isn't the model, it's the 
 
 ## What's next
 
-Owner login in front of the Control Center, per-agent budgets and rate limits, published MCP server package, per-user mandates, Postgres for multi-instance deployments, merchant-signed catalogs, PayPal webhooks for asynchronous capture updates, and mandate templates for teams.
+Multi-user accounts and 2FA for the Control Center, per-agent budgets and rate limits, published MCP server package, per-user mandates, Postgres for multi-instance deployments, merchant-signed catalogs, PayPal webhooks for asynchronous capture updates, and mandate templates for teams.
 
 ## Built with
 

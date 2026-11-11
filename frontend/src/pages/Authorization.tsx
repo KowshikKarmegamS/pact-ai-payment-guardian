@@ -293,11 +293,11 @@ export const Authorization: React.FC = () => {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <Link to="/transactions" className="inline-flex items-center gap-1.5 text-xs text-muted hover:text-fg">
+      <div className="flex items-center justify-between gap-4">
+        <Link to="/transactions" className="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted hover:text-fg">
           <ArrowLeft className="h-3.5 w-3.5" /> Transactions
         </Link>
-        <span className="flex items-center gap-2 text-[11px] text-faint">
+        <span className="hidden items-center gap-2 text-[11px] text-faint sm:flex">
           Proposal <Mono className="text-[11px] text-muted">{p.id}</Mono>
         </span>
       </div>

@@ -247,3 +247,31 @@ async def test_persistent_503_falls_back_after_one_retry(gemini, monkeypatch):
 @pytest.fixture
 def no_retry_delay(monkeypatch):
     monkeypatch.setattr(agent_module, "GEMINI_RETRY_DELAY_SECONDS", 0)
+
+
+@pytest.mark.asyncio
+async def test_quota_429_tries_backup_model_and_labels_it(gemini, monkeypatch):
+    """Free-tier quotas are per model: a 429 on the main model is answered by the backup model."""
+    monkeypatch.setattr(agent_module, "GEMINI_RETRY_DELAY_SECONDS", 0)
+    main, backup = get_settings().GEMINI_MODEL, get_settings().GEMINI_FALLBACK_MODEL
+
+    def respond(req):
+        if f"/{main}:" in req.url.path:
+            return httpx.Response(429, json={"error": {"status": "RESOURCE_EXHAUSTED"}})
+        body = _gemini_ok(OK_JSON)
+        body.pop("modelVersion", None)
+        return httpx.Response(200, json=body)
+
+    gemini["respond"] = respond
+    rec = await agent_module.generate_shopping_recommendation("ergonomic mouse", None, _catalog())
+    assert rec.provider == "gemini" and rec.model == backup  # labelled with the model that answered
+
+
+@pytest.mark.asyncio
+async def test_quota_429_without_backup_falls_back_honestly(gemini, monkeypatch):
+    monkeypatch.setattr(agent_module, "GEMINI_RETRY_DELAY_SECONDS", 0)
+    monkeypatch.setattr(get_settings(), "GEMINI_FALLBACK_MODEL", "")
+    gemini["respond"] = lambda r: httpx.Response(429, json={"error": {"status": "RESOURCE_EXHAUSTED"}})
+    rec = await agent_module.generate_shopping_recommendation("ergonomic mouse", None, _catalog())
+    assert rec.provider == "heuristic" and "429" in rec.fallback_reason
+    assert len(gemini["requests"]) == 1  # the same exhausted model is not called again
