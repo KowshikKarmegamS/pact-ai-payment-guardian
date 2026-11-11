@@ -166,6 +166,7 @@ const EVENTS: Record<string, EventDef> = {
   AGENT_AUTHORITY_CHECKED: { label: 'Agent checked its authority', tone: 'neutral', category: 'agent' },
   AGENT_MANDATE_DENIED: { label: 'Agent used an ungranted mandate', tone: 'bad', category: 'agent', alert: true },
   CATALOG_PRODUCT_CHANGED: { label: 'Catalog price changed', tone: 'caution', category: 'catalog' },
+  CONNECTOR_SYNCED: { label: 'Merchant connector synced', tone: 'info', category: 'catalog' },
   APPROVAL_REVALIDATION_FAILED: { label: 'Approval revalidation failed', tone: 'bad', category: 'approval', alert: true },
 };
 
@@ -247,6 +248,8 @@ export function explainEvent(e: AuditLogEntry): string {
       const a = (d.after ?? {}) as Record<string, unknown>;
       return `${product ?? 'Product'} changed from ${money(str(b.price), cur)} to ${money(str(a.price), cur)}; ${str(d.approvals_invalidated) ?? '0'} approval(s) invalidated.`;
     }
+    case 'CONNECTOR_SYNCED':
+      return `${str(d.connector) ?? 'Connector'} synced: ${str(d.created) ?? '0'} new, ${str(d.updated) ?? '0'} changed, ${str(d.delisted) ?? '0'} delisted; ${str(d.approvals_invalidated) ?? '0'} approval(s) invalidated.`;
     default:
       return str(d.message) ?? str(d.code) ?? eventMeta(e.event_type).label;
   }

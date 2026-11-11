@@ -3,7 +3,7 @@
 ## Links
 
 - **Repository:** https://github.com/KowshikKarmegamS/pact-ai-payment-guardian
-- **Demo video (2:49, in the repository):** https://github.com/KowshikKarmegamS/pact-ai-payment-guardian/blob/main/demo/pact-hackathon-final.mp4
+- **Demo video (2:54, in the repository):** https://github.com/KowshikKarmegamS/pact-ai-payment-guardian/blob/main/demo/pact-hackathon-final.mp4
   (direct file: https://github.com/KowshikKarmegamS/pact-ai-payment-guardian/raw/main/demo/pact-hackathon-final.mp4).
   Devpost's video field expects YouTube, Vimeo or Youku: upload this same file there and paste that link.
 - **Live app:** https://pact-ai-payment-guardian.onrender.com (Render free plan, PayPal Sandbox). The Control Center requires the owner password; share it with judges privately, never in the repository. The instance sleeps when idle (first load can take about a minute) and its data resets on restart.
@@ -27,6 +27,8 @@ PACT is a payment authorization gateway that lets AI agents transact within user
 5. The **human approves** the exact purchase in the Control Center. The approval is bound to a SHA-256 fingerprint of the product, merchant, price, quantity, currency, mandate rules and requesting agent.
 6. **PayPal executes**: PACT creates a PayPal Orders v2 Sandbox order for exactly that amount; the buyer approves in PayPal Checkout; PACT confirms the approval with PayPal server-side, re-checks the fingerprint and every rule, captures with an idempotency key, and records the payment only when PayPal returns a real capture ID with status COMPLETED for the approved amount.
 
+**Any store, not just one catalog.** Merchant platforms plug in through connectors: one `fetch_offers()` method per platform. The bundled example syncs a store exported in Shopify's `products.json` format. Synced offers face the same policy engine, fingerprint and PayPal flow, a store not on the mandate is blocked, and a sync that changes a price voids any approval that no longer matches.
+
 Every proposal gets an **Authorization Receipt** explaining which rules passed or failed, the budget at decision time, the approval fingerprint, PayPal IDs and the full lifecycle timeline, built from persisted server data and an append-only audit log.
 
 ## Why middleware
@@ -47,7 +49,7 @@ The demo includes a product listing whose description instructs AI agents that i
 
 ## How we built it
 
-An Agent Gateway API with per-agent scoped keys, and a dependency-free MCP server (JSON-RPC over stdio). FastAPI, SQLAlchemy 2, SQLite, Pydantic, httpx (Gemini REST API) and the OpenAI SDK on the backend; React, Vite, TypeScript, Tailwind and Lucide on the frontend. The policy engine is a pure module with no database or network access. Money is `Decimal` throughout. Capture safety combines an atomic database lock, a stable PayPal-Request-Id, and reconciliation through order lookup after timeouts. 148 automated backend tests (all passing) run against an in-memory PayPal fake, so the suite can never charge anyone. The Control Center is protected by owner sign-in (`OWNER_PASSWORD`, signed HttpOnly cookie), and deployments fail closed without it.
+An Agent Gateway API with per-agent scoped keys, and a dependency-free MCP server (JSON-RPC over stdio). FastAPI, SQLAlchemy 2, SQLite, Pydantic, httpx (Gemini REST API) and the OpenAI SDK on the backend; React, Vite, TypeScript, Tailwind and Lucide on the frontend. The policy engine is a pure module with no database or network access. Money is `Decimal` throughout. Capture safety combines an atomic database lock, a stable PayPal-Request-Id, and reconciliation through order lookup after timeouts. 156 automated backend tests (all passing) run against an in-memory PayPal fake, so the suite can never charge anyone. The Control Center is protected by owner sign-in (`OWNER_PASSWORD`, signed HttpOnly cookie), and deployments fail closed without it.
 
 ## Challenges
 
@@ -62,7 +64,7 @@ The interesting security boundary in agentic commerce isn't the model, it's the 
 
 ## What's next
 
-Multi-user accounts and 2FA for the Control Center, per-agent budgets and rate limits, published MCP server package, per-user mandates, Postgres for multi-instance deployments, merchant-signed catalogs, PayPal webhooks for asynchronous capture updates, and mandate templates for teams.
+Live store connectors (Shopify Admin API, WooCommerce) with scheduled syncs, multi-user accounts and 2FA for the Control Center, per-agent budgets and rate limits, published MCP server package, per-user mandates, Postgres for multi-instance deployments, merchant-signed catalogs, PayPal webhooks for asynchronous capture updates, and mandate templates for teams.
 
 ## Built with
 

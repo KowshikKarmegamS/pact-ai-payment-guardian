@@ -9,6 +9,8 @@ import type {
   ConnectedAgent,
   OwnerSession,
   ConnectedAgentCreated,
+  ConnectorSyncResult,
+  MerchantConnector,
   Product,
   ProductUpdateResult,
   Proposal,
@@ -34,6 +36,8 @@ export const pactApi = {
   getProducts: () => api.get<Product[]>('/products'),
   updateProduct: (id: number, updates: { price?: string; in_stock?: boolean }) =>
     api.put<ProductUpdateResult>(`/products/${id}`, updates),
+  getConnectors: () => api.get<MerchantConnector[]>('/connectors'),
+  syncConnector: (id: string) => api.post<ConnectorSyncResult>(`/connectors/${id}/sync`),
 
   // Proposals
   generateProposal: (prompt: string, mandate_id: string) =>

@@ -25,16 +25,16 @@
   .note b { color: #fb7185; font-weight: 600; }
 </style>
 </head>
-<body data-seconds="16">
+<body data-seconds="12">
   <div class="glow"></div><div class="grid"></div>
   <div class="head">
     <h2 class="in" style="animation-delay:.3s">Any agent. <span class="accent">One gateway.</span></h2>
-    <div class="who in" style="animation-delay:1.1s">
+    <div class="who in" style="animation-delay:.8s">
       <span class="chip">Claude</span><span class="chip">ChatGPT</span><span class="chip on">Gemini</span><span class="chip">Your own agent</span>
       <span class="chip">REST API · MCP</span>
     </div>
   </div>
-  <div class="term in" style="animation-delay:1.6s">
+  <div class="term in" style="animation-delay:1.1s">
     <div class="bar"><i></i><i></i><i></i><span>third-party agent → PACT MCP server</span></div>
     <div class="body" id="body">
       <p class="dim">Connected to MCP server 'pact-payment-authorization'</p>
@@ -47,10 +47,10 @@
       <p class="agent">AGENT: I cannot request the Sony WH-1000XM5 headphones because their $299.99 price exceeds your $100.00 per-item limit…</p>
     </div>
   </div>
-  <p class="note fade" style="animation-delay:11.2s">The MCP server has <b>no approve tool</b> and <b>no pay tool</b>. Agents can only ask.</p>
+  <p class="note fade" style="animation-delay:8.4s">The MCP server has <b>no approve tool</b> and <b>no pay tool</b>. Agents can only ask.</p>
 <script>
   const lines = [...document.querySelectorAll('#body p')];
-  const at = [2.2, 2.6, 3.4, 5.0, 5.9, 6.9, 8.1, 9.6];
+  const at = [1.5, 1.8, 2.4, 3.5, 4.2, 4.9, 5.8, 7.0];
   lines.forEach((p, i) => setTimeout(() => p.classList.add('show'), at[i] * 1000));
 </script>
 </body>

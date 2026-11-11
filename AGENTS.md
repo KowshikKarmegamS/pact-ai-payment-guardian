@@ -51,7 +51,8 @@ pact-ai-payment-guardian/
 │   │   │   ├── proposals.py
 │   │   │   ├── payments.py
 │   │   │   └── health.py
-│   │   └── services/         # audit, mandate budgets, authorization (fingerprint/revalidation)
+│   │   ├── connectors/       # MerchantConnector interface, Shopify products.json feed (offers only)
+│   │   └── services/         # audit, mandate budgets, authorization (fingerprint/revalidation), connector sync
 │   ├── tests/                # Pytest test suite
 │   ├── requirements.txt
 │   └── .env.example
@@ -118,6 +119,8 @@ Rules for changes:
 - Never set CAPTURED, a capture ID, or a capture status that PayPal did not return.
 - Any new field that affects what the user approved must be added to `canonical_snapshot()`.
 - Money is `Decimal` (`app/money.py`); never float.
+- Merchant connectors only supply offers into the catalog; they must never decide, approve or pay. A sync that
+  changes an offer must re-verify open proposals (`recheck_open_proposals`).
 - Schema changes must be additive and listed in `_ADDITIVE_COLUMNS` (`app/database.py`).
 
 ## API Design

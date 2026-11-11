@@ -92,6 +92,8 @@ class Product(Base):
     merchant = Column(String(100), nullable=False, index=True)
     image_url = Column(String(500), nullable=True)
     in_stock = Column(Boolean, nullable=False, default=True)
+    source = Column(String(40), nullable=False, default="pact-catalog", index=True)
+    external_id = Column(String(120), nullable=True)
 
     def __repr__(self) -> str:
         return f"<Product(id={self.id}, name='{self.name}', price={self.price}, merchant='{self.merchant}')>"

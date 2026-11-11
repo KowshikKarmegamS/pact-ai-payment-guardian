@@ -31,6 +31,8 @@ class ProductCreate(ProductBase):
 
 class ProductOut(ProductBase):
     id: int = Field(..., description="Unique product identifier")
+    source: str = Field(default="pact-catalog", description="Merchant connector that supplied this offer")
+    external_id: Optional[str] = Field(default=None, description="The offer's id on the source platform")
     model_config = ConfigDict(from_attributes=True)
 
 

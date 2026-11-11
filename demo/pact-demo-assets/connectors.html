@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Any store, one gateway</title>
+<link rel="stylesheet" href="card.css" />
+<style>
+  /* Matches backend/app/connectors: MerchantConnector.fetch_offers() -> Offer list, synced into the catalog. */
+  .head { position: absolute; top: 66px; left: 0; right: 0; text-align: center; }
+  .head h2 { font-size: 70px; font-weight: 700; letter-spacing: -0.02em; }
+  .box { position: absolute; border-radius: 22px; border: 1.5px solid #2c3648; background: #0f131c; box-shadow: 0 30px 90px rgba(0,0,0,.4); }
+  .lbl { font-size: 18px; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: #66718a; }
+  .chips { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+  .chip { font-size: 24px; color: #c9d1e2; border: 1.5px solid #2c3648; border-radius: 14px; padding: 10px 18px; background: #10141d; }
+  .agents { left: 150px; top: 250px; width: 300px; padding: 24px; }
+  .pact { left: 610px; top: 230px; width: 700px; padding: 28px 34px; border-color: rgba(124,140,255,.55); background: rgba(124,140,255,.07); }
+  .pact h3 { font-size: 40px; font-weight: 700; }
+  .layer { margin-top: 14px; font-size: 25px; padding: 12px 18px; border-radius: 12px; background: #10141d; border: 1.5px solid #2c3648; display: flex; justify-content: space-between; }
+  .layer i { font-style: normal; color: #66718a; font-size: 20px; }
+  .paypal { left: 1470px; top: 330px; width: 300px; padding: 26px; text-align: center; }
+  .paypal b { display: block; font-size: 34px; margin-top: 10px; }
+  .paypal span { font-size: 20px; color: #98a2b6; }
+  .wire { position: absolute; height: 2px; background: linear-gradient(90deg, #2c3648, #7c8cff, #2c3648); }
+  .vwire { position: absolute; width: 2px; background: linear-gradient(180deg, #7c8cff, #2c3648); }
+  .stores { position: absolute; left: 150px; right: 150px; top: 700px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 26px; }
+  .store { border-radius: 18px; border: 1.5px solid #2c3648; background: #0f131c; padding: 20px 24px; }
+  .store b { font-size: 27px; font-weight: 600; display: block; }
+  .store span { font-size: 20px; color: #98a2b6; }
+  .store .tag { display: inline-block; margin-top: 10px; font-size: 18px; padding: 4px 12px; border-radius: 8px; color: #34d399; background: rgba(52,211,153,.12); }
+  .store.next { border-style: dashed; border-color: #3a4560; }
+  .store.next .tag { color: #a5b4fc; background: rgba(124,140,255,.12); }
+  .code { margin-top: 10px; font: 400 19px/1.5 "JetBrains Mono", monospace; color: #c9d1e2; }
+  .code em { font-style: normal; color: #7c8cff; }
+  .cat { position: absolute; left: 0; right: 0; top: 640px; text-align: center; }
+</style>
+</head>
+<body data-seconds="10">
+  <div class="glow"></div><div class="grid"></div>
+  <div class="head in" style="animation-delay:.2s"><h2>Any agent. Any store. <span class="accent">One gateway.</span></h2></div>
+
+  <div class="box agents in" style="animation-delay:.6s">
+    <div class="lbl">Agents</div>
+    <div class="chips"><span class="chip">Claude</span><span class="chip">ChatGPT</span><span class="chip">Gemini</span><span class="chip">Your own</span></div>
+  </div>
+  <div class="wire fade" style="left:452px; width:156px; top:430px; animation-delay:1s"></div>
+
+  <div class="box pact in" style="animation-delay:.9s">
+    <h3>PACT</h3>
+    <div class="layer">Deterministic policy engine <i>your mandate</i></div>
+    <div class="layer">Fingerprinted human approval <i>SHA-256</i></div>
+    <div class="layer">Append-only audit trail <i>every step</i></div>
+  </div>
+  <div class="wire fade" style="left:1312px; width:156px; top:430px; animation-delay:1.3s"></div>
+
+  <div class="box paypal in" style="animation-delay:1.2s"><div class="lbl">Executes</div><b>PayPal</b><span>Orders v2 · verified capture</span></div>
+
+  <div class="vwire fade" style="left:959px; top:582px; height:56px; animation-delay:2.2s"></div>
+  <div class="cat fade lbl" style="animation-delay:2.2s">Catalog fed by merchant connectors</div>
+
+  <div class="stores">
+    <div class="store in" style="animation-delay:2.6s"><b>PACT demo catalog</b><span>TechHub · BookWorld</span><br /><span class="tag">built in</span></div>
+    <div class="store in" style="animation-delay:3.2s"><b>Northwind Supply</b><span>Shopify products.json format</span><br /><span class="tag">connected · synced</span></div>
+    <div class="store next in" style="animation-delay:4.2s"><b>Your platform</b><span>WooCommerce, BigCommerce, any feed</span>
+      <div class="code"><em>class</em> MyStore(MerchantConnector):<br />&nbsp;&nbsp;<em>def</em> fetch_offers(self) -&gt; list[Offer]</div></div>
+  </div>
+</body>
+</html>

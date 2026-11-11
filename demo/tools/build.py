@@ -18,7 +18,7 @@ WORK = HERE / "work"
 DEMO = HERE.parent
 ASSETS = DEMO / "pact-demo-assets"
 FPS = 30
-LEAD, TAIL = 0.45, 0.65          # silence before / after each narration line inside its clip
+LEAD, TAIL = 0.45, 0.5          # silence before / after each narration line inside its clip
 CARD_FADE = 0.45
 XFADE = 0.35                      # crossfade between consecutive clips (replaces hard cuts)
 PUSH_IN = 0.035                   # slow zoom over each app clip so held screens never look frozen
@@ -238,7 +238,7 @@ def main():
     (DEMO / "pact-narration.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     # Raw application recording: the three app takes back to back, original timing, no narration.
-    raws = [build_take(t) for t in ("app1", "app2", "app3", "app4") if (FRAMES / t / "frames.json").exists()]
+    raws = [build_take(t) for t in ("app1", "app2", "app3", "app4", "app5", "app6") if (FRAMES / t / "frames.json").exists()]
     (WORK / "raw.txt").write_text("\n".join(f"file '{r.as_posix()}'" for r in raws), encoding="utf-8")
     run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", WORK / "raw.txt", "-c:v", "libx264", "-crf", "21", "-preset", "medium",
          "-pix_fmt", "yuv420p", "-movflags", "+faststart", DEMO / "pact-recording-raw.mp4"])

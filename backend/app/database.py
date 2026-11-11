@@ -41,6 +41,8 @@ def get_db() -> Generator[Session, None, None]:
 
 # Columns added after the first release. (table, column, SQL type + default)
 _ADDITIVE_COLUMNS = [
+    ("products", "source", "VARCHAR(40) NOT NULL DEFAULT 'pact-catalog'"),
+    ("products", "external_id", "VARCHAR(120)"),
     ("mandates", "currency", "VARCHAR(3) NOT NULL DEFAULT 'USD'"),
     ("mandates", "expires_at", "DATETIME"),
     ("mandates", "revoked_at", "DATETIME"),

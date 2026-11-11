@@ -1,18 +1,40 @@
 import React, { useMemo, useState } from 'react';
-import { Pencil, Search } from 'lucide-react';
+import { Pencil, PlugZap, RefreshCw, Search } from 'lucide-react';
 import { pactApi } from '../api/pact';
 import { errorMessage } from '../api/client';
 import { ProductTile } from '../components/ProductTile';
 import { useToast } from '../components/Toast';
 import { Badge, Button, Card, Dialog, EmptyState, ErrorState, Field, PageHeader, RefreshButton, Skeleton, cx, inputClass } from '../components/ui';
-import { money, toNumber } from '../lib/format';
+import { money, timeAgo, toNumber } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
-import type { Product } from '../types';
+import type { MerchantConnector, Product } from '../types';
 
 export const Catalog: React.FC = () => {
   const toast = useToast();
   const state = useAsync(() => pactApi.getProducts());
+  const connectors = useAsync(() => pactApi.getConnectors());
   const [query, setQuery] = useState('');
+  const [source, setSource] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState<string | null>(null);
+  const sourceName = useMemo(() => new Map((connectors.data ?? []).map((c) => [c.id, c.name])), [connectors.data]);
+
+  const sync = async (c: MerchantConnector) => {
+    setSyncing(c.id);
+    try {
+      const r = await pactApi.syncConnector(c.id);
+      const n = r.approvals_invalidated;
+      toast.success(
+        `${c.name} synced: ${r.created} new, ${r.updated} changed, ${r.delisted} delisted`,
+        n > 0 ? `${n} open approval${n === 1 ? ' was' : 's were'} invalidated by the new offer data.` : 'Every offer now goes through the same policy engine, fingerprint and PayPal flow.',
+      );
+      setSource(c.id);
+      await Promise.all([state.reload(), connectors.reload()]);
+    } catch (err) {
+      toast.error(`${c.name} sync failed`, errorMessage(err));
+    } finally {
+      setSyncing(null);
+    }
+  };
   const [editing, setEditing] = useState<Product | null>(null);
   const [price, setPrice] = useState('');
   const [saving, setSaving] = useState(false);
@@ -20,8 +42,10 @@ export const Catalog: React.FC = () => {
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return (state.data ?? []).filter((p) => !q || `${p.name} ${p.merchant} ${p.category}`.toLowerCase().includes(q));
-  }, [state.data, query]);
+    return (state.data ?? []).filter(
+      (p) => (!source || p.source === source) && (!q || `${p.name} ${p.merchant} ${p.category}`.toLowerCase().includes(q)),
+    );
+  }, [state.data, query, source]);
 
   const open = (p: Product) => {
     setEditing(p);
@@ -56,11 +80,34 @@ export const Catalog: React.FC = () => {
   return (
     <div>
       <PageHeader
-        eyebrow="Merchant feed"
+        eyebrow="Merchant connectors"
         title="Catalog"
-        description="Seeded demo catalog that stands in for a merchant feed. It is the only source of prices and merchants; the AI can only point at an item. Change a price here to see open approvals invalidate."
-        actions={<RefreshButton onClick={() => void state.reload()} loading={state.loading} />}
+        description="Offers from every connected store. The catalog is the only source of prices and merchants; agents can only point at an item. Change a price here, or sync a store, and open approvals are re-verified."
+        actions={<RefreshButton onClick={() => void Promise.all([state.reload(), connectors.reload()])} loading={state.loading} />}
       />
+
+      <div className="mb-6 grid gap-3 md:grid-cols-2">
+        {(connectors.data ?? []).map((c) => (
+          <Card key={c.id} className={cx('flex items-start gap-3 p-4', source === c.id && 'ring-1 ring-accent/50')}>
+            <div className="mt-0.5 rounded-lg bg-accent/10 p-2 text-accent"><PlugZap className="h-4 w-4" /></div>
+            <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setSource(source === c.id ? null : c.id)} aria-pressed={source === c.id}>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-semibold text-fg">{c.name}</p>
+                <Badge tone={c.syncable ? 'info' : 'neutral'}>{c.platform}</Badge>
+              </div>
+              <p className="mt-1 text-xs text-muted">{c.description}</p>
+              <p className="mt-1.5 text-[11px] text-faint tnum">
+                {c.products} offers · {c.in_stock} in stock{c.syncable ? ` · ${c.last_synced_at ? `synced ${timeAgo(c.last_synced_at)}` : 'never synced'}` : ''}
+              </p>
+            </button>
+            {c.syncable && (
+              <Button size="sm" variant="secondary" loading={syncing === c.id} onClick={() => void sync(c)} icon={<RefreshCw className="h-3.5 w-3.5" />} aria-label={`Sync ${c.name}`}>
+                Sync
+              </Button>
+            )}
+          </Card>
+        ))}
+      </div>
 
       <div className="relative mb-4 max-w-sm">
         <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-faint" />
@@ -81,6 +128,7 @@ export const Catalog: React.FC = () => {
                 <div className="min-w-0 flex-1">
                   <p className="line-clamp-2 text-sm font-medium leading-snug text-fg">{p.name}</p>
                   <p className="mt-0.5 truncate text-[11px] text-faint">{p.merchant} · {p.category}</p>
+                  {p.source !== 'pact-catalog' && <Badge tone="info" className="mt-1.5">via {sourceName.get(p.source) ?? p.source}</Badge>}
                 </div>
               </div>
               <p className="mt-3 line-clamp-2 flex-1 text-xs leading-relaxed text-muted">{p.description}</p>

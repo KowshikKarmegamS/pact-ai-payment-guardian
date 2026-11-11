@@ -5,6 +5,8 @@
 //   app2    the $89 purchase: policy pass, human approval, PayPal Sandbox checkout, verified capture
 //   app3    second approval invalidated by a catalog price change, audit trail, final Command Center
 //   app4    Agent Gateway: connected third-party agent, its requests, and one awaiting approval
+//   app5    connecting a new agent (its key is masked before any frame is saved)
+//   app6    syncing the Northwind Supply connector, then a Northwind item blocked by the mandate
 //   card:<name>  record demo/pact-demo-assets/<name>.html (title cards)
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -237,7 +239,7 @@ const takes = {
     await page.getByText('Gemini agent via MCP').first().waitFor();
     await sleep(1200);
     rec.mark('agents');
-    await p.hover(page.getByText('Awaiting you'));
+    await p.hover(page.getByText('Awaiting you').last());
     await sleep(2200);
     await p.hover(page.getByText('What it can never do'));
     await sleep(2600);
@@ -249,6 +251,84 @@ const takes = {
     await sleep(3200);
     await p.hover(page.getByRole('button', { name: /Approve/ }));
     await sleep(2200);
+    rec.mark('end');
+  },
+
+  async app5(page, p, rec) {
+    await page.goto(BASE + '/agents');
+    await page.getByRole('heading', { name: 'Connected agents' }).waitFor();
+    await sleep(1200);
+    rec.mark('connect');
+    await p.click(page.getByRole('button', { name: 'Connect an agent' }).first());
+    await page.getByLabel('Agent name').waitFor();
+    await sleep(500);
+    await p.type(page.getByLabel('Agent name'), 'Claude Desktop (MCP)', 55);
+    await sleep(400);
+    await p.click(page.getByRole('dialog').getByText('Home Office Essentials'));
+    await sleep(900);
+    rec.mark('connect_form');
+    // The key is replaced on screen before any frame of it is saved.
+    await p.hover(page.getByRole('button', { name: 'Create agent key' }));
+    await sleep(400);
+    rec.suppress = true;
+    await page.getByRole('button', { name: 'Create agent key' }).click();
+    await page.getByText(/is connected/).waitFor();
+    await page.evaluate(() => {
+      const key = [...document.querySelectorAll('[role="dialog"] *')]
+        .map((el) => (el.childNodes.length === 1 && el.firstChild.nodeType === 3 ? el.textContent.trim() : ''))
+        .find((t) => /^pact_[A-Za-z0-9_-]{20,}$/.test(t));
+      if (!key) throw new Error('agent key not found on screen');
+      const masked = key.slice(0, 13) + '••••••••••••••••••••';
+      const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) if (n.nodeValue.includes(key)) n.nodeValue = n.nodeValue.split(key).join(masked);
+    });
+    await sleep(300);
+    rec.suppress = false;
+    rec.mark('key_shown');
+    await p.hover(page.getByText(/stores only its hash/));
+    await sleep(3200);
+    await p.hover(page.getByText(/MCP server \(Claude Desktop/));
+    await sleep(2600);
+    rec.mark('end');
+  },
+
+  async app6(page, p, rec) {
+    await page.goto(BASE + '/catalog');
+    await page.getByRole('button', { name: 'Sync Northwind Supply' }).waitFor();
+    await sleep(1300);
+    rec.mark('catalog');
+    await p.hover(page.getByText('Northwind Supply').first());
+    await sleep(1500);
+    await p.click(page.getByRole('button', { name: 'Sync Northwind Supply' }), { pause: 600 });
+    await page.getByText(/Northwind Supply synced/).waitFor({ timeout: 30000 });
+    rec.mark('synced');
+    await sleep(800);
+    await p.hover(page.getByText('USB-C 100W Braided Cable, 2 m'));
+    await sleep(2600);
+
+    await p.click(page.getByRole('link', { name: 'Reference agent' }));
+    const box = page.getByPlaceholder('Describe what you want to buy…');
+    await box.waitFor();
+    const sel = page.getByLabel('Spending mandate');
+    const id = await sel.evaluate((s) => [...s.options].find((o) => o.text.startsWith('Home Office Essentials'))?.value);
+    await sel.selectOption(id);
+    await sleep(600);
+    rec.mark('ask');
+    await p.type(box, 'Order the braided USB-C cable from Northwind Supply.');
+    await sleep(400);
+    await p.click(page.getByRole('button', { name: 'Recommend' }));
+    await page.getByRole('heading', { name: /USB-C 100W Braided Cable/ }).waitFor({ timeout: 60000 });
+    await requireGemini(page);
+    await sleep(700);
+    rec.mark('result');
+    await p.hover(page.getByText(/Blocked by the policy engine/).first());
+    await sleep(2400);
+    await p.click(page.getByRole('button', { name: 'See why it was blocked' }).first());
+    await page.getByText(/Blocked by the policy engine: 1 of/).waitFor();
+    await sleep(500);
+    rec.mark('why');
+    await p.hover(page.getByText(/Merchant/).first());
+    await sleep(3800);
     rec.mark('end');
   },
 };

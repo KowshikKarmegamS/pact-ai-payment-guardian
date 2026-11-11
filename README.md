@@ -52,6 +52,23 @@ PACT_URL=http://localhost:8001 PACT_AGENT_KEY=pact_agent_… GEMINI_API_KEY=… 
 
 The built-in Gemini shopping assistant is PACT's **reference agent**: it uses the same policy path, so everything below applies to every agent.
 
+## Connect any store (merchant connectors)
+
+PACT is not tied to its own catalog. A merchant platform plugs in through a **connector**: one class with one method,
+`fetch_offers()`, that returns the store's offers (`backend/app/connectors/`). **Catalog → Sync** (or
+`POST /api/connectors/{id}/sync`) brings the offers into the catalog, tagged with their source. From there they face the
+same policy engine, approval fingerprint and PayPal flow as every other item; a connector never decides, approves or pays.
+
+- Bundled example: **Northwind Supply**, a demo store exported in Shopify's `products.json` format (products with priced
+  variants), parsed by `ShopifyFeedConnector`.
+- A sync that changes an offer's price, name, merchant, category or stock re-verifies every open proposal for it, exactly
+  like a manual catalog edit: approvals that no longer match become `APPROVAL_EXPIRED`. Offers that disappear from the
+  feed are marked out of stock. Offers in another currency are skipped and reported. An unreadable feed changes nothing.
+- A mandate still decides which stores are allowed: a synced store that is not on the mandate's merchant list is blocked.
+- Adding a platform (WooCommerce, BigCommerce, a partner API) means writing one `MerchantConnector` subclass and
+  registering it in `app/connectors/__init__.py`. Only the bundled Shopify-format feed exists today; no live store
+  credentials are used.
+
 ## What PACT does
 
 | Step | Who | What happens |
@@ -84,6 +101,8 @@ Captured from the current build on 2026-11-11 (`demo/tools/screenshots.mjs`), us
 | ![Blocked](docs/screenshots/blocked-125.jpg) | ![Captured](docs/screenshots/captured-89.jpg) |
 | **Approval voided by a price change** | **An external agent's request waiting for the owner** |
 | ![Voided](docs/screenshots/price-change-voided.jpg) | ![Agent request](docs/screenshots/agent-request.jpg) |
+| **Merchant connectors: a Shopify-format store synced in** | **Its offer blocked: store not on the mandate** |
+| ![Connectors](docs/screenshots/connectors.jpg) | ![Connector offer blocked](docs/screenshots/connector-blocked.jpg) |
 | **Security and audit trail** | **Mobile** |
 | ![Audit trail](docs/screenshots/audit-trail.jpg) | <img src="docs/screenshots/mobile-control-center.jpg" width="180" alt="Mobile Control Center"> <img src="docs/screenshots/mobile-captured.jpg" width="180" alt="Mobile captured payment"> |
 
@@ -124,7 +143,9 @@ An earlier run of the original flow captured `9XY78096Y6982133J` (99.99 USD) and
    │                   PayPal-Request-Id idempotency, Sandbox-only enforcement,
    │                   classified errors (no tokens or raw payloads logged)
    ├── services/owner_auth.py  owner sign-in (signed HttpOnly cookie) for the Control Center
-   └── routers/        products, mandates, proposals (+ receipt), payments, audit, status,
+   ├── connectors/     MerchantConnector interface + Shopify products.json connector;
+   │                   services/connector_sync.py syncs offers and re-verifies open approvals
+   └── routers/        products, connectors, mandates, proposals (+ receipt), payments, audit, status,
                        agents (owner side), gateway (/api/agent/v1 for AI agents), owner (sign-in)
    ▼
  SQLite (SQLAlchemy 2)  — additive migrations on startup
@@ -275,7 +296,8 @@ This is the flow in the final video. A fresh database seeds two mandates (*Q1 De
 3. **Reference agent:** "I need a wireless mechanical keyboard for coding, under $100." → Keychron K8 Pro, $89, 10/10 rules → **Review & authorize** → **Approve $89.00** → **Continue to PayPal Checkout** → approve as the Sandbox buyer → back in PACT, **Capture $89.00** → real capture ID, `COMPLETED`.
 4. **Invalidation:** ask for one more K8 Pro and approve it, then **Catalog → change price** to $99.50. The approval becomes **Approval expired** with the change listed.
 5. **Any agent:** **Agents → Connect an agent**, grant the mandate, then run `integrations/mcp/example_agent.py` with the key (see above). Over-limit requests are refused; in-policy ones wait on the Agents page.
-6. **Audit Trail:** every step, including agent requests and refusals.
+6. **Any store:** **Catalog → Sync** Northwind Supply (a Shopify-format feed), then ask the reference agent for "the braided USB-C cable from Northwind Supply" under *Home Office Essentials* → **blocked**: the store is not on the mandate.
+7. **Audit Trail:** every step, including agent requests, refusals and connector syncs.
 
 See [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the narration and [docs/DEVPOST.md](docs/DEVPOST.md) for the submission text.
 
@@ -286,7 +308,7 @@ cd backend && pytest -v
 cd frontend && npm ci && npm run build
 ```
 
-148 backend tests (2026-11-11: `148 passed`) cover the policy engine as pure unit tests (every rule, quantity boundaries, Decimal precision, currency), AI output validation for both providers, Gemini HTTP errors/quota/timeouts/safety blocks against a stubbed endpoint (malformed JSON, wrong types, unknown product IDs, out-of-range quantities, injected fields, fallback reasons), a fully prompt-injected AI being blocked, the full payment lifecycle against an in-memory PayPal fake (capture before buyer approval, order amount/currency/reference mismatches, missing capture ID, PENDING and DECLINED captures, amount mismatch, timeouts with idempotent retry and reconciliation, concurrent capture lock, duplicate capture), approval invalidation (mandate edits, pausing, catalog price drift, tampered rows), cancellation and reopen, audit redaction, Sandbox-only enforcement, the Agent Gateway (scoped keys, revocation, no approve/capture route, idempotent requests), the MCP server, the Gemini backup model on 429/503, and owner sign-in (protected routes, HttpOnly cookie, forged/expired tokens, throttling, fail-closed when required but unset). Tests never touch `pact.db`, Gemini, OpenAI or PayPal.
+156 backend tests (2026-11-12: `156 passed`) cover the policy engine as pure unit tests (every rule, quantity boundaries, Decimal precision, currency), AI output validation for both providers, Gemini HTTP errors/quota/timeouts/safety blocks against a stubbed endpoint (malformed JSON, wrong types, unknown product IDs, out-of-range quantities, injected fields, fallback reasons), a fully prompt-injected AI being blocked, the full payment lifecycle against an in-memory PayPal fake (capture before buyer approval, order amount/currency/reference mismatches, missing capture ID, PENDING and DECLINED captures, amount mismatch, timeouts with idempotent retry and reconciliation, concurrent capture lock, duplicate capture), approval invalidation (mandate edits, pausing, catalog price drift, tampered rows), cancellation and reopen, audit redaction, Sandbox-only enforcement, the Agent Gateway (scoped keys, revocation, no approve/capture route, idempotent requests), the MCP server, the Gemini backup model on 429/503, owner sign-in (protected routes, HttpOnly cookie, forged/expired tokens, throttling, fail-closed when required but unset), and merchant connectors (Shopify feed parsing, sync, price drift and delisting voiding approvals, unlisted merchants blocked, foreign currency and unreadable feeds). Tests never touch `pact.db`, Gemini, OpenAI or PayPal.
 
 ## Deployment (Render)
 
@@ -304,7 +326,7 @@ Status: **deployed** at https://pact-ai-payment-guardian.onrender.com (verified 
 
 - Owner sign-in is a single shared password (`OWNER_PASSWORD`) with a signed session cookie and in-memory login throttling: suitable for a demo or a single owner, not a multi-user product (no accounts, no 2FA, no per-user mandates). With no password set, the Control Center is open to anyone who can reach it; that mode is for local demos only. Agents always authenticate with their own scoped keys.
 - SQLite with a single instance. The capture lock is an atomic row update, which is correct for one process and one database; multiple instances would need Postgres.
-- The catalog is seeded demo data, not a live merchant feed.
+- The catalog is seeded demo data plus one bundled Shopify-format feed. Connectors read offers only; there is no live store integration (no store credentials, no webhooks), and syncs run when the owner clicks Sync.
 - Orders use `PAYPAL_CURRENCY` only; there is no multi-currency support by design.
 - The fingerprint proves the approved values did not change inside PACT; it is not a signature by the user's device.
 - When no AI key is configured, recommendations come from the keyword heuristic and are labelled as such.
@@ -324,7 +346,7 @@ HANDOFF.md        current state, verified results, next steps
 
 ## Demo video
 
-[`demo/pact-hackathon-final.mp4`](demo/pact-hackathon-final.mp4) in this repository: 2:49, 1920x1080 H.264 + AAC stereo, narrated (Google Gemini TTS) and captioned (`demo/pact-demo-assets/captions.srt`). Narration with timestamps: [`demo/pact-narration.txt`](demo/pact-narration.txt). Not uploaded to YouTube or Vimeo.
+[`demo/pact-hackathon-final.mp4`](demo/pact-hackathon-final.mp4) in this repository: 2:54, 1920x1080 H.264 + AAC stereo, narrated (Google Gemini TTS) and captioned (`demo/pact-demo-assets/captions.srt`). Narration with timestamps: [`demo/pact-narration.txt`](demo/pact-narration.txt). Not uploaded to YouTube or Vimeo.
 
 ## License
 

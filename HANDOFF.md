@@ -1,20 +1,21 @@
 # HANDOFF.md — PACT (AI Payment Authorization Gateway)
 
-> Last updated: 2026-11-11 · branch `main`
+> Last updated: 2026-11-12 · branch `main`
 
 ## Current state
 
 | Item | State | How to check |
 |---|---|---|
-| Backend tests | **148 passed** (3 deprecation warnings from Starlette) | `cd backend && pytest -q` |
+| Backend tests | **156 passed** (3 deprecation warnings from Starlette) | `cd backend && pytest -q` |
 | Frontend production build | **passes** (2084 modules, Vite) | `cd frontend && npm run build` |
 | PayPal Sandbox end to end | **verified live**: order `1TB76166AJ238330L`, capture `7HT24116Y1448214M`, COMPLETED, 89.00 USD (final demo run); earlier capture `9XY78096Y6982133J`, 99.99 USD, with duplicate capture prevented | Transactions page / Authorization Receipt |
 | AI recommender | **Gemini `gemini-3.5-flash`** works with the current key (Google reports `gemini-3.6-flash`); backup `gemini-3.5-flash-lite` works and is tried once on 429/500/503; otherwise the labelled keyword fallback ("not AI") | `GET /api/status`; sidebar "Recommender" |
 | Agent Gateway + MCP | **verified live**: real Gemini agent over MCP; over-limit Sony request blocked, $34.99 hub request awaiting approval | `integrations/mcp/example_agent.py` |
 | Owner sign-in | **implemented and tested** (unit tests + manual browser test): wrong password rejected, sign-in unlocks, sign-out locks | set `OWNER_PASSWORD` |
-| Demo video | **final**: `demo/pact-hackathon-final.mp4`, 2:49 (169.4 s), 1920x1080 H.264 High 30 fps + AAC-LC 48 kHz stereo, 51 MB, decodes with zero errors | `ffprobe`, `ffmpeg -v error -i … -f null -` |
+| Demo video | **final (v2)**: `demo/pact-hackathon-final.mp4`, 2:54 (174.1 s), 1920x1080 H.264 30 fps + AAC 48 kHz stereo, 51 MB, decodes with zero errors. Adds agent connection, the fingerprint card, merchant connectors and the architecture card | `ffprobe`, `ffmpeg -v error -i … -f null -` |
 | Screenshots | **current** dark UI, 9 images in `docs/screenshots/` (7 desktop 1440x900, 2 mobile 390x844 @2x) | README → Screenshots |
 | Render deployment | **live** at https://pact-ai-payment-guardian.onrender.com (free plan; data resets on restart/sleep). Verified: health 200, PayPal Sandbox OAuth OK, Gemini configured, owner routes 401 until sign-in, agent gateway 401 without key, sign-in screen renders | `/api/status?check_paypal=true` |
+| Merchant connectors | **implemented and tested** (8 tests; manual browser test on a scratch database): `MerchantConnector.fetch_offers()`, bundled Shopify-format Northwind Supply feed, Catalog → Sync, approvals re-verified on sync. **Not deployed to Render yet** (needs a push) | `GET /api/connectors` |
 | Docker image | **builds and runs locally**; fails closed without `OWNER_PASSWORD` | `docker build -t pact .` |
 
 ## What PACT is
@@ -56,9 +57,20 @@ PayPal capture ID with status COMPLETED and a matching amount and currency.
   `bash run_takes.sh` (needs the PayPal Sandbox buyer signed in to the recorder profile: `node record.mjs login`),
   `node record.mjs app4`, `python build.py`. Screenshots: `node screenshots.mjs <blocked> <captured> <voided> <agent-request>`.
 
+## Demo video v2 notes (2026-11-12)
+
+- New takes on the same demo database: `app5` (connect "Claude Desktop (MCP)"; the key is replaced in the page before
+  any frame is saved, so the video shows only `pact_agent_OL••••`), `app6` (Northwind sync, then a live Gemini
+  recommendation of the Northwind cable, blocked by the merchant rule), and `app4` re-recorded so both agents appear.
+- New cards: `fingerprint.html` (values and 409/200 responses from a real run on a scratch database; its hash
+  `4e312a16…` is that run's, not the video's $89 proposal, and the card says "demo run") and `connectors.html`.
+- 11 lines re-voiced: 9 with `gemini-3.8-flash-tts`, `14d`/`14e` with `gemini-3.8-flash-lite-tts` (daily limit).
+  All 11 transcribed and match the script; the transcriber heard "In Pact" for "And Pact" at 2:22.
+- `demo/tools/pact-demo.db.bak-before-v2` is the database before these takes.
+
 ## Remaining tasks
 
-1. Watch and listen to `demo/pact-hackathon-final.mp4` once, end to end.
+1. Watch and listen to `demo/pact-hackathon-final.mp4` once, end to end (check the line at 2:22).
 2. Upload the video to YouTube (unlisted) or Vimeo and paste that link into Devpost (`docs/DEVPOST.md` has the
    repository and in-repo video links).
 3. Not yet verified on the live site (needs the owner password): a signed-in Gemini recommendation and a PayPal Sandbox payment end to end.

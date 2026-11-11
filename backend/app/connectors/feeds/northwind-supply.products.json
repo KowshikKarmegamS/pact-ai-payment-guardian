@@ -1,0 +1,61 @@
+{
+  "products": [
+    {
+      "id": 8812001,
+      "title": "Logitech MX Master 3S Wireless Mouse",
+      "body_html": "<p>Quiet clicks, 8K DPI tracking on glass and an ergonomic shape for long coding sessions.</p>",
+      "vendor": "Logitech",
+      "product_type": "Electronics",
+      "images": [],
+      "variants": [{"id": 4410001, "title": "Default Title", "price": "99.99", "available": true}]
+    },
+    {
+      "id": 8812002,
+      "title": "Ergonomic Aluminium Laptop Stand",
+      "body_html": "<p>Raises the screen to eye level. Six height positions, folds flat for travel.</p>",
+      "vendor": "Northwind",
+      "product_type": "Office",
+      "images": [],
+      "variants": [{"id": 4410002, "title": "Default Title", "price": "39.99", "available": true}]
+    },
+    {
+      "id": 8812003,
+      "title": "Logitech Brio 4K Webcam",
+      "body_html": "<p>4K Ultra HD video calls with HDR and auto light correction.</p>",
+      "vendor": "Logitech",
+      "product_type": "Electronics",
+      "images": [],
+      "variants": [{"id": 4410003, "title": "Default Title", "price": "129.00", "available": true}]
+    },
+    {
+      "id": 8812004,
+      "title": "Gas-Spring Monitor Arm",
+      "body_html": "<p>Holds one 17 to 32 inch monitor; tilt, swivel and rotate with one hand.</p>",
+      "vendor": "Northwind",
+      "product_type": "Office",
+      "images": [],
+      "variants": [{"id": 4410004, "title": "Default Title", "price": "64.50", "available": true}]
+    },
+    {
+      "id": 8812005,
+      "title": "Felt Desk Mat",
+      "body_html": "<p>Wool felt desk pad that protects the desk and keeps the keyboard in place.</p>",
+      "vendor": "Northwind",
+      "product_type": "Office",
+      "images": [],
+      "variants": [
+        {"id": 4410005, "title": "Charcoal", "price": "24.00", "available": true},
+        {"id": 4410006, "title": "Sand", "price": "24.00", "available": false}
+      ]
+    },
+    {
+      "id": 8812006,
+      "title": "USB-C 100W Braided Cable, 2 m",
+      "body_html": "<p>USB 3.2 Gen 2 data and 100W charging in one braided cable.</p>",
+      "vendor": "Northwind",
+      "product_type": "Electronics",
+      "images": [],
+      "variants": [{"id": 4410007, "title": "Default Title", "price": "14.99", "available": true}]
+    }
+  ]
+}

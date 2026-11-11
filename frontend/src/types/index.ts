@@ -11,6 +11,30 @@ export interface Product {
   merchant: string;
   image_url?: string | null;
   in_stock: boolean;
+  source: string;
+  external_id?: string | null;
+}
+
+export interface MerchantConnector {
+  id: string;
+  name: string;
+  platform: string;
+  description: string;
+  syncable: boolean;
+  products: number;
+  in_stock: number;
+  last_synced_at: string | null;
+}
+
+export interface ConnectorSyncResult {
+  connector_id: string;
+  offers: number;
+  created: number;
+  updated: number;
+  unchanged: number;
+  delisted: number;
+  skipped: string[];
+  approvals_invalidated: number;
 }
 
 export interface MandateRestrictions {
