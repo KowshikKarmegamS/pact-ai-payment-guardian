@@ -48,8 +48,8 @@ Steps:
 1. **Control Center:** the pitch, from the narration above.
 2. **Reference agent:** "Order the NuPhy Halo75 V2 wireless keyboard for my desk." → blocked, $125 against $100.
 3. **Reference agent:** "I need a wireless mechanical keyboard for coding, under $100." → Keychron K8 Pro $89 →
-   **Review & authorize** → **Approve $89.00** → **Continue to PayPal Checkout** → approve as the buyer →
-   **Capture $89.00**.
+   **Review & authorize** → **Approve $89.00** (opens PayPal Checkout) → approve as the buyer → back in PACT the
+   capture happens automatically once the server confirms the buyer's approval with PayPal.
 4. Ask for "one more Keychron K8 Pro keyboard for my teammate", approve it, then **Catalog** → change the K8 Pro
    price to $99.50 → the approval shows **Approval expired** and what changed.
 5. Run `PACT_URL=… PACT_AGENT_KEY=… GEMINI_API_KEY=… python integrations/mcp/example_agent.py "Request the Sony

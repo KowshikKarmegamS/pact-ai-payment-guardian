@@ -18,6 +18,8 @@
     "vite": "^8.3.6"
   },
   "dependencies": {
+    "ag-studio": "^3.1.0",
+    "ag-studio-react": "^3.1.0",
     "lucide-react": "^1.70.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

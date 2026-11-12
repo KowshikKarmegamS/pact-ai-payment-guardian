@@ -33,6 +33,9 @@ class ProductOut(ProductBase):
     id: int = Field(..., description="Unique product identifier")
     source: str = Field(default="pact-catalog", description="Merchant connector that supplied this offer")
     external_id: Optional[str] = Field(default=None, description="The offer's id on the source platform")
+    brand: Optional[str] = None
+    purchase_url: Optional[str] = Field(default=None, description="Retailer buy link (live connector offers)")
+    offer_checked_at: Optional[datetime] = Field(default=None, description="When the offer was last read from its source")
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -234,6 +237,10 @@ class ProposalOut(BaseModel):
     supersedes_id: Optional[str] = None
     agent_id: Optional[str] = None
     agent_name: Optional[str] = None
+    offer_source: Optional[str] = None
+    offer_external_id: Optional[str] = None
+    purchase_url: Optional[str] = None
+    retailer_handoff_at: Optional[datetime] = None
     alternatives: Optional[List[Dict[str, Any]]] = None
     policy_checks: Optional[List[Dict[str, Any]]] = None
     remaining_budget_at_decision: Optional[Decimal] = None

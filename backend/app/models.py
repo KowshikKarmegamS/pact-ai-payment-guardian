@@ -94,6 +94,9 @@ class Product(Base):
     in_stock = Column(Boolean, nullable=False, default=True)
     source = Column(String(40), nullable=False, default="pact-catalog", index=True)
     external_id = Column(String(120), nullable=True)
+    brand = Column(String(120), nullable=True)
+    purchase_url = Column(String(1000), nullable=True)
+    offer_checked_at = Column(DateTime(timezone=True), nullable=True)
 
     def __repr__(self) -> str:
         return f"<Product(id={self.id}, name='{self.name}', price={self.price}, merchant='{self.merchant}')>"
@@ -164,6 +167,12 @@ class Proposal(Base):
     agent_id = Column(String(36), nullable=True, index=True)
     agent_name = Column(String(100), nullable=True)
     agent_request_id = Column(String(100), nullable=True)  # the agent's own idempotency key
+
+    # --- The exact external offer (merchant connectors such as Channel3); part of the approval fingerprint ---
+    offer_source = Column(String(40), nullable=True)
+    offer_external_id = Column(String(120), nullable=True)
+    purchase_url = Column(String(1000), nullable=True)
+    retailer_handoff_at = Column(DateTime(timezone=True), nullable=True)
 
     # --- Deterministic policy decision ---
     policy_checks = Column(JSON, nullable=True)

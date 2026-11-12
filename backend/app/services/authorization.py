@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.connectors.base import stable_buy_link
 from app.models import APPROVED_STATUSES, Mandate, Product, Proposal, ProposalStatus, as_utc, utc_now
 from app.money import fmt, q
 from app.policy import PolicyEngine, checks_to_json
@@ -85,6 +86,11 @@ def canonical_snapshot(proposal: Proposal, mandate: Mandate) -> Dict[str, Any]:
     # so fingerprints of earlier proposals are unchanged.
     if getattr(proposal, "agent_id", None):
         snap["requested_by"] = {"agent_id": proposal.agent_id, "agent_name": proposal.agent_name}
+    # The exact external offer (retailer listing and buy link) is part of what the human approves.
+    # Added only for connector offers, so fingerprints of catalog proposals are unchanged.
+    if getattr(proposal, "offer_source", None) and getattr(proposal, "purchase_url", None):
+        snap["offer"] = {"source": proposal.offer_source, "external_id": proposal.offer_external_id,
+                         "purchase_url": stable_buy_link(proposal.purchase_url)}
     return snap
 
 
@@ -120,7 +126,7 @@ def describe_changes(before: Optional[Dict[str, Any]], after: Dict[str, Any]) ->
     if not before:
         return ["No approved snapshot is on record for this proposal."]
     changes: List[str] = []
-    for section in ("proposal", "mandate", "requested_by"):
+    for section in ("proposal", "mandate", "requested_by", "offer"):
         b, a = before.get(section) or {}, after.get(section) or {}
         for key in sorted(set(b) | set(a)):
             if b.get(key) != a.get(key):
@@ -146,6 +152,8 @@ def catalog_drift(proposal: Proposal, product: Optional[Product]) -> List[str]:
         drift.append(f"Catalog category changed from '{proposal.category}' to '{product.category}'.")
     if product.name != proposal.product_name:
         drift.append(f"Catalog product name changed from '{proposal.product_name}' to '{product.name}'.")
+    if getattr(proposal, "purchase_url", None) and stable_buy_link(product.purchase_url) != stable_buy_link(proposal.purchase_url):
+        drift.append("The retailer's buy link changed since this offer was approved.")
     return drift
 
 

@@ -27,6 +27,10 @@ PACT is a payment authorization gateway that lets AI agents transact within user
 5. The **human approves** the exact purchase in the Control Center. The approval is bound to a SHA-256 fingerprint of the product, merchant, price, quantity, currency, mandate rules and requesting agent.
 6. **PayPal executes**: PACT creates a PayPal Orders v2 Sandbox order for exactly that amount; the buyer approves in PayPal Checkout; PACT confirms the approval with PayPal server-side, re-checks the fingerprint and every rule, captures with an idempotency key, and records the payment only when PayPal returns a real capture ID with status COMPLETED for the approved amount.
 
+**Live retailers through Channel3.** Agents (and the built-in reference agent) search 100M+ real products across 25,000+ retailers via Channel3. Every retailer offer becomes a catalog item with the retailer's domain as merchant and its real price, availability and buy link, then faces the same mandate, fingerprint-bound approval and PayPal flow. PACT re-reads the offer from Channel3 before approval, PayPal order creation and capture, voids the approval if anything changed, and after a verified capture hands the buyer to the retailer's checkout without ever recording that as a retailer payment.
+
+**Spending analytics in AG Studio.** The Control Center has an AG Studio dashboard over every real purchase request (paid, requested and stopped-by-policy totals, outcomes, agents, merchants, sources), with cross-filtering and Studio's AI agents, which run on Gemini through PACT's server so no key reaches the browser.
+
 **Any store, not just one catalog.** Merchant platforms plug in through connectors: one `fetch_offers()` method per platform. The bundled example syncs a store exported in Shopify's `products.json` format. Synced offers face the same policy engine, fingerprint and PayPal flow, a store not on the mandate is blocked, and a sync that changes a price voids any approval that no longer matches.
 
 Every proposal gets an **Authorization Receipt** explaining which rules passed or failed, the budget at decision time, the approval fingerprint, PayPal IDs and the full lifecycle timeline, built from persisted server data and an append-only audit log.
@@ -68,4 +72,4 @@ Live store connectors (Shopify Admin API, WooCommerce) with scheduled syncs, mul
 
 ## Built with
 
-python, mcp, fastapi, sqlalchemy, sqlite, pydantic, google-gemini, openai, paypal-orders-v2, paypal-checkout, react, typescript, vite, tailwindcss
+python, mcp, fastapi, sqlalchemy, sqlite, pydantic, google-gemini, openai, paypal-orders-v2, paypal-checkout, channel3, ag-grid, ag-studio, react, typescript, vite, tailwindcss

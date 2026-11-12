@@ -28,6 +28,11 @@ services:
         value: gemini-3.5-flash
       - key: GEMINI_API_KEY
         sync: false
+      - key: CHANNEL3_API_KEY
+        sync: false
+      # Optional: AG Studio license key, used at image build time (otherwise the dashboard shows a watermark).
+      - key: VITE_AG_STUDIO_LICENSE_KEY
+        sync: false
       - key: PAYPAL_CLIENT_ID
         sync: false
       - key: PAYPAL_CLIENT_SECRET

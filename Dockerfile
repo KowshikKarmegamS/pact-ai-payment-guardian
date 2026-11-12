@@ -6,6 +6,9 @@ WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+# Optional AG Studio trial/commercial key (removes the watermark). Browser-side by design, like any AG license key.
+ARG VITE_AG_STUDIO_LICENSE_KEY=
+ENV VITE_AG_STUDIO_LICENSE_KEY=$VITE_AG_STUDIO_LICENSE_KEY
 RUN npm run build
 
 # ---- 2. Python runtime ----

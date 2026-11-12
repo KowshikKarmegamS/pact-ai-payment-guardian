@@ -11,6 +11,7 @@ import os
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["OPENAI_API_KEY"] = ""
 os.environ["GEMINI_API_KEY"] = ""
+os.environ["CHANNEL3_API_KEY"] = ""
 os.environ["AI_PROVIDER"] = "auto"
 os.environ["PAYPAL_CLIENT_ID"] = "test-client-id"
 os.environ["PAYPAL_CLIENT_SECRET"] = "test-client-secret"

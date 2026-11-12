@@ -57,6 +57,12 @@ class Settings(BaseSettings):
     OWNER_PASSWORD: str = ""
     REQUIRE_OWNER_AUTH: bool = False
     OWNER_SESSION_HOURS: int = 12
+    # Channel3 product search (https://docs.trychannel3.com). Empty key = live retailer search disabled.
+    CHANNEL3_API_KEY: str = ""
+    CHANNEL3_BASE_URL: str = "https://api.trychannel3.com"
+    CHANNEL3_TIMEOUT_SECONDS: float = 15.0
+    # Comma-separated searches that "Sync" runs to refresh a standing set of retailer offers.
+    CHANNEL3_SYNC_QUERIES: str = "wireless mechanical keyboard,usb-c hub,ergonomic wireless mouse"
     CORS_ORIGINS: Union[str, List[str]] = "http://localhost:5173,http://localhost:3000"
     # Directory containing the built React app. When it exists, FastAPI serves it.
     FRONTEND_DIST: str = "../frontend/dist"

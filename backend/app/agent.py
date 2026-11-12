@@ -117,7 +117,7 @@ def _catalog_summary(catalog: List[Product]) -> list:
             "merchant": p.merchant,
             "price": f"{p.price:.2f}",
             "in_stock": p.in_stock,
-            "description": p.description,
+            "description": (p.description or "")[:240],
         }
         for p in catalog
     ]

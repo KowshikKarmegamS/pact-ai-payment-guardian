@@ -18,6 +18,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Store,
   X,
 } from 'lucide-react';
 import { pactApi } from '../api/pact';
@@ -27,6 +28,63 @@ import { useToast } from '../components/Toast';
 import { Badge, Button, Card, CardHeader, ConfirmDialog, ErrorState, Eyebrow, Meter, Mono, Skeleton, StatusPill, TONE_DOT, TONE_PANEL, TONE_TEXT, cx } from '../components/ui';
 import { aiLabel, dateTime, eventMeta, explainEvent, isAIProvider, money, shortHash, timeOnly, toNumber, type Tone } from '../lib/format';
 import type { AuthorizationReceipt, PolicyCheck, Proposal } from '../types';
+
+const RetailerPanel: React.FC<{ p: Proposal; onDone: () => void }> = ({ p, onDone }) => {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const captured = p.status === 'CAPTURED';
+  const host = (() => {
+    try {
+      return new URL(p.purchase_url ?? '').host;
+    } catch {
+      return '';
+    }
+  })();
+  const open = async () => {
+    setBusy(true);
+    try {
+      const res = await pactApi.retailerHandoff(p.id);
+      window.open(res.url, '_blank', 'noopener,noreferrer');
+      toast.info(`Handed off to ${res.merchant}`, res.note);
+      onDone();
+    } catch (err) {
+      toast.error('Handoff refused', errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card>
+      <CardHeader title="Retailer offer" subtitle={`Live listing via ${p.offer_source === 'channel3' ? 'Channel3' : p.offer_source}`} icon={<Store className="h-4 w-4" />} />
+      <div className="space-y-3 p-5 text-xs leading-relaxed text-muted">
+        <dl className="space-y-1.5">
+          <div className="flex justify-between gap-3"><dt className="text-faint">Retailer</dt><dd className="font-medium text-fg">{p.merchant}</dd></div>
+          <div className="flex justify-between gap-3"><dt className="text-faint">Offer</dt><dd><Mono className="text-[11px]">{p.offer_external_id}</Mono></dd></div>
+          <div className="flex justify-between gap-3"><dt className="text-faint">Buy link</dt><dd><Mono className="text-[11px]">{host}</Mono></dd></div>
+        </dl>
+        <p>
+          The retailer, price and buy link are part of the approval fingerprint. PACT re-reads this offer from Channel3 before
+          approval, before the PayPal order and before capture; any change voids the approval.
+        </p>
+        {captured ? (
+          <>
+            <Button className="w-full" loading={busy} onClick={() => void open()} icon={<ExternalLink className="h-4 w-4" />}>
+              {p.retailer_handoff_at ? `Open ${p.merchant} again` : `Continue to ${p.merchant}`}
+            </Button>
+            <p className="text-[11px] text-faint">
+              {p.retailer_handoff_at ? `Handed off ${dateTime(p.retailer_handoff_at)}. ` : ''}
+              The retailer's own checkout completes the order. PACT records the handoff, never a retailer payment.
+            </p>
+          </>
+        ) : (
+          <p className="rounded-lg border border-line bg-ink/40 px-3 py-2 text-[11px] text-faint">
+            Retailer handoff opens only after the PayPal Sandbox payment is captured and verified.
+          </p>
+        )}
+      </div>
+    </Card>
+  );
+};
 
 const POLL_MS = 5000;
 
@@ -172,7 +230,8 @@ export const Authorization: React.FC = () => {
     [busy, load],
   );
 
-  // Buyer returned from PayPal. This only triggers a server-side check with PayPal; it never captures.
+  // Buyer returned from PayPal: the server asks PayPal whether the buyer approved (this call never captures).
+  // Once PayPal confirms, the effect below records the payment automatically through the capture endpoint.
   useEffect(() => {
     const result = params.get('paypal');
     if ((result !== 'return' && result !== 'cancel') || handledReturn.current) return;
@@ -200,6 +259,32 @@ export const Authorization: React.FC = () => {
   }, [params, setParams, id, load, toast]);
 
   const status = receipt?.proposal.status;
+
+  // PayPal confirmed the buyer's approval: capture now instead of waiting for a click. The server re-checks the
+  // order with PayPal, the approval fingerprint, the live offer and every policy rule before it captures, and the
+  // request is idempotent, so a repeat cannot double-charge.
+  const autoCaptured = useRef(false);
+  useEffect(() => {
+    if (status !== 'PAYPAL_BUYER_APPROVED' || autoCaptured.current || busy) return;
+    autoCaptured.current = true;
+    void (async () => {
+      setBusy('capture');
+      try {
+        const res = await pactApi.capturePayPalPayment(id);
+        if (res.capture_status === 'COMPLETED') {
+          setJustCaptured(true);
+          toast.success('Payment recorded automatically', `PayPal confirmed the buyer's approval; capture ${res.capture_id} completed.`);
+        } else {
+          toast.info('Capture not completed', res.message);
+        }
+      } catch (err) {
+        setActionError(errorMessage(err));
+      } finally {
+        await load();
+        setBusy(null);
+      }
+    })();
+  }, [status, busy, id, load, toast]);
 
   // While checkout is open elsewhere, ask the server (which asks PayPal) whether the buyer approved.
   useEffect(() => {
@@ -251,7 +336,15 @@ export const Authorization: React.FC = () => {
   const approve = () =>
     run('approve', async () => {
       await pactApi.approveProposal(id, p.proposal_fingerprint ?? '');
-      toast.success('Purchase authorized', 'Your approval is bound to this exact proposal.');
+      toast.success('Purchase authorized', 'Opening PayPal Checkout for exactly this amount…');
+      // Straight on to PayPal: the order is created server-side only after the approval is re-verified.
+      try {
+        const res = await pactApi.createPayPalOrder(id);
+        window.location.assign(res.approve_url);
+        await new Promise(() => undefined);
+      } catch (err) {
+        toast.info('Approved; PayPal Checkout not opened yet', errorMessage(err));
+      }
     });
   const reject = () =>
     run('reject', async () => {
@@ -424,6 +517,8 @@ export const Authorization: React.FC = () => {
             </Card>
           )}
 
+          {p.purchase_url && <RetailerPanel p={p} onDone={() => void load()} />}
+
           <Card>
             <CardHeader title="Budget impact" subtitle={m.name} action={<Badge tone={m.status === 'active' ? 'ok' : 'warn'} dot>{m.status}</Badge>} />
             {b && (
@@ -451,7 +546,7 @@ export const Authorization: React.FC = () => {
                   <div className="min-w-0 text-xs leading-relaxed text-muted">
                     <CopyValue value={p.approval_fingerprint ?? p.proposal_fingerprint ?? ''} display={shortHash(p.approval_fingerprint ?? p.proposal_fingerprint)} />
                     <p className="mt-0.5">
-                      SHA-256 of the product, merchant, price, quantity, currency, mandate rules{p.agent_name ? ' and requesting agent' : ''}.{' '}
+                      SHA-256 of the product, merchant, price, quantity, currency, mandate rules{p.purchase_url ? ', retailer offer and buy link' : ''}{p.agent_name ? ' and requesting agent' : ''}.{' '}
                       {p.approved_at ? (
                         <>Approved {dateTime(p.approved_at)}. <span className={approvalValid ? 'text-ok' : 'text-caution'}>{approvalValid ? 'Still intact.' : 'Void: it no longer matches.'}</span></>
                       ) : (

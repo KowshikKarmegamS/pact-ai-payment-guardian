@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pencil, PlugZap, RefreshCw, Search } from 'lucide-react';
+import { ExternalLink, Pencil, PlugZap, RefreshCw, Search } from 'lucide-react';
 import { pactApi } from '../api/pact';
 import { errorMessage } from '../api/client';
 import { ProductTile } from '../components/ProductTile';
@@ -8,6 +8,39 @@ import { Badge, Button, Card, Dialog, EmptyState, ErrorState, Field, PageHeader,
 import { money, timeAgo, toNumber } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
 import type { MerchantConnector, Product } from '../types';
+
+
+const LiveSearch: React.FC<{ onImported: () => Promise<void> }> = ({ onImported }) => {
+  const toast = useToast();
+  const [q, setQ] = useState('');
+  const [busy, setBusy] = useState(false);
+  const run = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (q.trim().length < 2 || busy) return;
+    setBusy(true);
+    try {
+      const res = await pactApi.searchChannel3(q.trim());
+      toast.success(
+        `Channel3: ${res.result.offers} retailer offers for “${q.trim()}”`,
+        `${res.result.created} new, ${res.result.updated} changed. Each offer now has a PACT product ID and faces your mandate like any other item.`,
+      );
+      await onImported();
+    } catch (err) {
+      toast.error('Live search failed', errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form onSubmit={run} className="mt-3 flex gap-2">
+      <div className="relative flex-1">
+        <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-faint" />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search live retailers, e.g. “logitech mx master 3s”" aria-label="Search live retailers with Channel3" className={cx(inputClass, 'pl-9')} maxLength={300} />
+      </div>
+      <Button type="submit" loading={busy} disabled={q.trim().length < 2}>Search</Button>
+    </form>
+  );
+};
 
 export const Catalog: React.FC = () => {
   const toast = useToast();
@@ -82,13 +115,13 @@ export const Catalog: React.FC = () => {
       <PageHeader
         eyebrow="Merchant connectors"
         title="Catalog"
-        description="Offers from every connected store. The catalog is the only source of prices and merchants; agents can only point at an item. Change a price here, or sync a store, and open approvals are re-verified."
+        description="Offers from every connected source, including live retailers through Channel3. The catalog is the only source of prices and merchants; agents can only point at an item. Change a price, sync a store, or let a retailer change its offer, and open approvals are re-verified."
         actions={<RefreshButton onClick={() => void Promise.all([state.reload(), connectors.reload()])} loading={state.loading} />}
       />
 
       <div className="mb-6 grid gap-3 md:grid-cols-2">
         {(connectors.data ?? []).map((c) => (
-          <Card key={c.id} className={cx('flex items-start gap-3 p-4', source === c.id && 'ring-1 ring-accent/50')}>
+          <Card key={c.id} className={cx('flex flex-wrap items-start gap-3 p-4', c.searchable && 'md:col-span-2', source === c.id && 'ring-1 ring-accent/50')}>
             <div className="mt-0.5 rounded-lg bg-accent/10 p-2 text-accent"><PlugZap className="h-4 w-4" /></div>
             <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setSource(source === c.id ? null : c.id)} aria-pressed={source === c.id}>
               <div className="flex flex-wrap items-center gap-2">
@@ -101,9 +134,18 @@ export const Catalog: React.FC = () => {
               </p>
             </button>
             {c.syncable && (
-              <Button size="sm" variant="secondary" loading={syncing === c.id} onClick={() => void sync(c)} icon={<RefreshCw className="h-3.5 w-3.5" />} aria-label={`Sync ${c.name}`}>
+              <Button size="sm" variant="secondary" loading={syncing === c.id} disabled={!c.configured} onClick={() => void sync(c)} icon={<RefreshCw className="h-3.5 w-3.5" />} aria-label={`Sync ${c.name}`}>
                 Sync
               </Button>
+            )}
+            {c.searchable && (
+              <div className="basis-full">
+                {c.configured ? (
+                  <LiveSearch onImported={async () => { setSource(c.id); await Promise.all([state.reload(), connectors.reload()]); }} />
+                ) : (
+                  <p className="mt-2 text-[11px] text-warn">Not configured: set CHANNEL3_API_KEY on the server.</p>
+                )}
+              </div>
             )}
           </Card>
         ))}
@@ -129,6 +171,11 @@ export const Catalog: React.FC = () => {
                   <p className="line-clamp-2 text-sm font-medium leading-snug text-fg">{p.name}</p>
                   <p className="mt-0.5 truncate text-[11px] text-faint">{p.merchant} · {p.category}</p>
                   {p.source !== 'pact-catalog' && <Badge tone="info" className="mt-1.5">via {sourceName.get(p.source) ?? p.source}</Badge>}
+                  {p.purchase_url && (
+                    <a href={p.purchase_url} target="_blank" rel="noopener noreferrer" className="ml-1.5 inline-flex items-center gap-1 text-[11px] text-accent hover:underline">
+                      View at retailer <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
                 </div>
               </div>
               <p className="mt-3 line-clamp-2 flex-1 text-xs leading-relaxed text-muted">{p.description}</p>

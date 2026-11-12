@@ -13,6 +13,9 @@ export interface Product {
   in_stock: boolean;
   source: string;
   external_id?: string | null;
+  brand?: string | null;
+  purchase_url?: string | null;
+  offer_checked_at?: string | null;
 }
 
 export interface MerchantConnector {
@@ -21,9 +24,49 @@ export interface MerchantConnector {
   platform: string;
   description: string;
   syncable: boolean;
+  configured: boolean;
+  searchable: boolean;
   products: number;
   in_stock: number;
   last_synced_at: string | null;
+}
+
+export interface AnalyticsPurchaseRow {
+  purchase_id: string;
+  day: string;
+  created_at: string;
+  product: string;
+  merchant: string;
+  category: string;
+  agent: string;
+  source: string;
+  mandate: string;
+  outcome: string;
+  status: string;
+  decided_by_policy: string;
+  requested_amount: number;
+  paid_amount: number;
+  blocked_amount: number;
+  quantity: number;
+  currency: string;
+  ai_engine: string;
+}
+
+export interface AnalyticsDataset {
+  purchases: AnalyticsPurchaseRow[];
+}
+
+export interface Channel3SearchResult {
+  result: ConnectorSyncResult;
+  products: Product[];
+}
+
+export interface RetailerHandoff {
+  url: string;
+  merchant: string;
+  handed_off_at: string;
+  payment_status: string;
+  note: string;
 }
 
 export interface ConnectorSyncResult {
@@ -138,6 +181,10 @@ export interface Proposal {
   supersedes_id?: string | null;
   agent_id?: string | null;
   agent_name?: string | null;
+  offer_source?: string | null;
+  offer_external_id?: string | null;
+  purchase_url?: string | null;
+  retailer_handoff_at?: string | null;
   alternatives?: Alternative[] | null;
   policy_checks?: PolicyCheck[] | null;
   remaining_budget_at_decision?: DecimalString | null;

@@ -214,6 +214,18 @@ SEED_PRODUCTS = [
 
 SEED_MANDATES = [
     {
+        # Retailer domains as returned by Channel3 live search. Any other retailer is blocked.
+        "name": "Live retailers (Channel3): desk tech under $100",
+        "max_budget": Decimal("300.00"),
+        "allowed_merchants": ["bestbuy.com", "keychron.com", "anker.com", "logitech.com", "newegg.com"],
+        "allowed_categories": ["Electronics"],
+        "restrictions": {
+            "max_price_per_item": 100.00,
+            "max_quantity": 2,
+        },
+        "is_active": True,
+    },
+    {
         "name": "Q1 Developer Equipment & Workstation Peripherals",
         "max_budget": Decimal("750.00"),
         "allowed_merchants": ["TechHub", "BookWorld", "HomeEssentials", "MicroCenter", "GitHub"],

@@ -218,6 +218,16 @@ export const ShoppingAssistant: React.FC = () => {
   const [params, setParams] = useSearchParams();
   const mandates = useAsync(() => pactApi.getMandates());
   const status = useAsync(() => pactApi.getStatus());
+  const connectors = useAsync(() => pactApi.getConnectors());
+  const liveAvailable = !!connectors.data?.find((c) => c.id === 'channel3')?.configured;
+  const [source, setSource] = useState<'catalog' | 'channel3'>(() => {
+    try {
+      return sessionStorage.getItem('pact.assistant.source') === 'channel3' ? 'channel3' : 'catalog';
+    } catch {
+      return 'catalog';
+    }
+  });
+  const effectiveSource = liveAvailable ? source : 'catalog';
   const [mandateId, setMandateId] = useState('');
   const [prompt, setPrompt] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -248,7 +258,7 @@ export const ShoppingAssistant: React.FC = () => {
       if (!t || !forMandate || submitting) return;
       setSubmitting(true);
       try {
-        const res = await pactApi.generateProposal(t, forMandate);
+        const res = await pactApi.generateProposal(t, forMandate, effectiveSource);
         addCase(res.proposal.id);
         setPrompt('');
         void reloadMandates();
@@ -258,7 +268,7 @@ export const ShoppingAssistant: React.FC = () => {
         setSubmitting(false);
       }
     },
-    [submitting, addCase, reloadMandates, toast],
+    [submitting, addCase, reloadMandates, toast, effectiveSource],
   );
 
   // "Ask PACT" on the Control Center hands over ?q=...
@@ -278,7 +288,7 @@ export const ShoppingAssistant: React.FC = () => {
       <PageHeader
         eyebrow="Reference agent · built-in Gemini shopping assistant"
         title="What do you need?"
-        description="One example of an AI agent using PACT. It picks one catalog item; prices and merchants come from the catalog, the decision comes from your mandate, and payment needs your approval. External agents use the same path through the Agent Gateway."
+        description="One example of an AI agent using PACT. It picks one item, from PACT's catalog or from live retailer offers found by Channel3; prices and merchants come from the catalog or the retailer, the decision comes from your mandate, and payment needs your approval. External agents use the same path through the Agent Gateway."
       />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -290,6 +300,37 @@ export const ShoppingAssistant: React.FC = () => {
                 void submit(prompt, mandateId);
               }}
             >
+              <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-faint">Shop from</span>
+                <div role="radiogroup" aria-label="Product source" className="inline-flex rounded-lg border border-line bg-ink/40 p-0.5">
+                  {([['catalog', 'PACT catalog'], ['channel3', 'Live retailers · Channel3']] as const).map(([id, label]) => {
+                    const on = effectiveSource === id;
+                    const disabled = id === 'channel3' && !liveAvailable;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        disabled={disabled}
+                        title={disabled ? 'Channel3 is not configured on this server (CHANNEL3_API_KEY).' : undefined}
+                        onClick={() => {
+                          setSource(id);
+                          try {
+                            sessionStorage.setItem('pact.assistant.source', id);
+                          } catch {
+                            /* storage unavailable */
+                          }
+                        }}
+                        className={cx('rounded-md px-3 py-1 font-medium transition-colors disabled:opacity-40', on ? 'bg-accent/15 text-fg ring-1 ring-accent/40' : 'text-muted hover:text-fg')}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {effectiveSource === 'channel3' && <span className="text-faint">Searches 100M+ products across 25,000+ retailers, then your mandate decides.</span>}
+              </div>
               <label htmlFor="prompt" className="sr-only">Shopping request</label>
               <div className="relative">
                 <textarea

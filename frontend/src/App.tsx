@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Link, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { OwnerGate } from './components/OwnerGate';
@@ -12,6 +12,8 @@ import { Dashboard } from './pages/Dashboard';
 import { Mandates } from './pages/Mandates';
 import { ShoppingAssistant } from './pages/ShoppingAssistant';
 import { Transactions } from './pages/Transactions';
+
+const Analytics = lazy(() => import('./pages/Analytics'));
 
 const NotFound: React.FC = () => (
   <EmptyState
@@ -39,6 +41,7 @@ export const App: React.FC = () => (
           <Route path="proposals/:id" element={<Authorization />} />
           <Route path="audit" element={<AuditTrail />} />
           <Route path="catalog" element={<Catalog />} />
+          <Route path="analytics" element={<Suspense fallback={null}><Analytics /></Suspense>} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>

@@ -43,10 +43,14 @@ TOOLS = [
     },
     {
         "name": "search_catalog",
-        "description": "Search the merchant catalog. Prices come from the catalog; you cannot set a price.",
+        "description": "Search for products: PACT's catalog plus live retailer offers from Channel3 (100M+ products, "
+                       "25k+ retailers). Each result has a PACT product_id; the merchant is the retailer's domain. "
+                       "Prices come from the catalog or the retailer; you cannot set a price, and you cannot buy "
+                       "directly: request_purchase is the only way to buy.",
         "inputSchema": {"type": "object", "properties": {
             "query": {"type": "string", "description": "What the user wants, e.g. 'wireless headphones'"},
             "category": {"type": "string"},
+            "live": {"type": "boolean", "description": "Include live retailer offers via Channel3 (default true)"},
             "limit": {"type": "integer", "minimum": 1, "maximum": 20}},
             "required": ["query"], "additionalProperties": False},
         "annotations": {"readOnlyHint": True},
@@ -120,8 +124,10 @@ def call_tool(name: str, args: dict):
             return _gateway("GET", f"/mandates/{urllib.parse.quote(args['mandate_id'])}/authority")
         return _gateway("GET", "/whoami")
     if name == "search_catalog":
+        live = args.get("live", True)
         return _gateway("GET", "/catalog", query={"q": args.get("query"), "category": args.get("category"),
-                                                  "limit": args.get("limit", 8)})
+                                                  "limit": args.get("limit", 8),
+                                                  "live": "true" if live else "false"})
     if name == "evaluate_purchase":
         return _gateway("POST", "/purchases/evaluate", {"mandate_id": args["mandate_id"],
                                                        "product_id": args["product_id"],

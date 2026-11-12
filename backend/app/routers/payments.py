@@ -12,9 +12,12 @@ Invariants enforced here:
 """
 
 import time
+from datetime import datetime
+from urllib.parse import urlparse
 from typing import Any, Dict, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -32,7 +35,9 @@ from app.paypal import (
     verify_order_matches,
 )
 from app.schemas import ProposalOut
+from app.connectors import ConnectorError
 from app.services.audit import log_audit_event
+from app.services.connector_sync import reverify_live_offer
 from app.services.authorization import expire_approval, verify_authorization
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
@@ -112,6 +117,14 @@ def _state(proposal: Proposal, message: str) -> PaymentStateResponse:
     )
 
 
+async def _reverify_offer(db: Session, proposal: Proposal, product: Optional[Product], stage: str) -> None:
+    try:
+        await run_in_threadpool(reverify_live_offer, db, proposal, product, stage)
+    except ConnectorError as exc:
+        raise _fail(503, "OFFER_UNVERIFIED", f"PACT could not re-check this retailer offer before {stage}: {exc} "
+                    "Nothing was charged. Try again in a moment.")
+
+
 def _invalidated(message: str, proposal: Proposal) -> HTTPException:
     return _fail(409, "APPROVAL_INVALIDATED", message, proposal_status=proposal.status.value)
 
@@ -132,6 +145,7 @@ async def create_paypal_payment_order(proposal_id: str, db: Session = Depends(ge
             f"PayPal checkout requires an explicitly approved proposal; current status is {proposal.status.value}.",
         )
 
+    await _reverify_offer(db, proposal, product, "PayPal order creation")
     integrity = verify_authorization(db, proposal, mandate, product, require_approval=True)
     if not integrity.ok:
         raise _invalidated(expire_approval(db, proposal, "PayPal order creation", integrity), proposal)
@@ -442,7 +456,8 @@ async def capture_paypal_payment(proposal_id: str, db: Session = Depends(get_db)
             log_audit_event(db, "PAYPAL_BUYER_APPROVED", "Proposal", proposal.id,
                             {"paypal_order_id": proposal.paypal_order_id, "paypal_status": paypal_status})
 
-        # 2. Revalidate the human approval and policy right before money moves.
+        # 2. Revalidate the human approval, the live retailer offer and policy right before money moves.
+        await _reverify_offer(db, proposal, product, "capture")
         integrity = verify_authorization(db, proposal, mandate, product, require_approval=True)
         if not integrity.ok:
             raise _invalidated(expire_approval(db, proposal, "capture", integrity), proposal)
@@ -489,6 +504,43 @@ async def capture_paypal_payment(proposal_id: str, db: Session = Depends(get_db)
         if proposal.capture_lock_expires is not None:
             proposal.capture_lock_expires = None
             db.commit()
+
+
+class RetailerHandoff(BaseModel):
+    url: str
+    merchant: str
+    handed_off_at: datetime
+    payment_status: str
+    note: str
+
+
+@router.post("/{proposal_id}/retailer-handoff", response_model=RetailerHandoff,
+             summary="After a verified PayPal capture, hand the buyer to the retailer's own checkout (recorded, never marked as paid)")
+def retailer_handoff(proposal_id: str, db: Session = Depends(get_db)):
+    proposal, _, _ = _load(db, proposal_id)
+    if not proposal.purchase_url:
+        raise _fail(409, "NO_RETAILER", "This purchase is from PACT's own catalog; there is no external retailer to hand off to.")
+    if proposal.status != ProposalStatus.CAPTURED:
+        raise _fail(409, "INVALID_STATE", "Retailer handoff opens only after the PayPal payment is captured and verified "
+                                          f"(status is {proposal.status.value}).")
+    parsed = urlparse(proposal.purchase_url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise _fail(409, "UNSAFE_URL", "The stored retailer link is not an https URL.")
+    first = proposal.retailer_handoff_at is None
+    if first:
+        proposal.retailer_handoff_at = utc_now()
+        db.commit()
+        db.refresh(proposal)
+    log_audit_event(db, "RETAILER_HANDOFF_OPENED", "Proposal", proposal.id, {
+        "merchant": proposal.merchant, "retailer_link_host": parsed.netloc, "offer": proposal.offer_external_id,
+        "paypal_capture_id": proposal.paypal_capture_id, "first_handoff": first,
+    })
+    return RetailerHandoff(
+        url=proposal.purchase_url, merchant=proposal.merchant, handed_off_at=proposal.retailer_handoff_at,
+        payment_status=proposal.status.value,
+        note=("The buyer continues on the retailer's own checkout. PACT records only that the handoff happened; "
+              "it does not mark anything as paid at the retailer."),
+    )
 
 
 @router.get("/{proposal_id}/status", summary="Read-only PayPal order status (sanitized)")

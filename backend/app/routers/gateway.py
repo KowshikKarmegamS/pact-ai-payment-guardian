@@ -14,7 +14,9 @@ from datetime import datetime
 from decimal import Decimal
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -28,6 +30,10 @@ from app.schemas import PolicyCheck
 from app.services.agent_keys import current_agent
 from app.services.audit import log_audit_event
 from app.services.mandate_service import budget_breakdown, mandate_status
+from app.connectors import ConnectorError, get_connector
+from app.services.connector_sync import search_and_import
+
+logger = logging.getLogger("pact.gateway")
 
 router = APIRouter(prefix="/agent/v1", tags=["Agent Gateway (for AI agents)"])
 
@@ -136,14 +142,31 @@ class CatalogItem(BaseModel):
     currency: str
     in_stock: bool
     description: str
+    source: str = Field(description="'pact-catalog', 'channel3' (live retailer offer) or another connector")
+    brand: Optional[str] = None
 
 
 @router.get("/catalog", response_model=List[CatalogItem], summary="Search the merchant catalog")
 def catalog(q_: Optional[str] = Query(default=None, alias="q", max_length=200),
             category: Optional[str] = Query(default=None, max_length=100),
             limit: int = Query(default=10, ge=1, le=50),
+            live: bool = Query(default=True, description="Also search live retailers through Channel3 (when configured)"),
+            response: Response = None,
             agent: AgentClient = Depends(current_agent), db: Session = Depends(get_db)):
-    products = db.query(Product).order_by(Product.id).all()
+    live_items: List[Product] = []
+    c3 = get_connector("channel3")
+    if q_ and live and c3 is not None and c3.configured:
+        try:
+            _, live_items = search_and_import(db, q_, limit=min(limit, 10))
+            log_audit_event(db, "AGENT_CATALOG_SEARCHED", "Agent", agent.id,
+                            {"agent_name": agent.name, "query": q_[:200], "live_results": len(live_items)})
+        except ConnectorError as exc:
+            logger.warning("Live retailer search unavailable for agent search: %s", exc)
+            if response is not None:
+                response.headers["X-PACT-Live-Search"] = "unavailable"
+    if category:
+        live_items = [p for p in live_items if p.category.lower() == category.strip().lower()]
+    products = db.query(Product).filter(Product.source != "channel3").order_by(Product.id).all()
     if category:
         products = [p for p in products if p.category.lower() == category.strip().lower()]
     if q_:
@@ -155,9 +178,7 @@ def catalog(q_: Optional[str] = Query(default=None, alias="q", max_length=200),
             if score:
                 scored.append((score, p))
         products = [p for _, p in sorted(scored, key=lambda t: (-t[0], t[1].id))]
-    cur = get_settings().currency
-    return [CatalogItem(product_id=p.id, name=p.name, merchant=p.merchant, category=p.category, price=q(p.price),
-                        currency=cur, in_stock=p.in_stock, description=p.description) for p in products[:limit]]
+    return [_item(p) for p in (live_items + products)[:limit]]
 
 
 # --------------------------------------------------------------------------- purchases
@@ -213,8 +234,10 @@ def evaluate(body: PurchaseIntent, agent: AgentClient = Depends(current_agent), 
 
 
 def _item(p: Product) -> CatalogItem:
+    # The retailer's buy link is deliberately not given to agents: purchases go through PACT only.
     return CatalogItem(product_id=p.id, name=p.name, merchant=p.merchant, category=p.category, price=q(p.price),
-                       currency=get_settings().currency, in_stock=p.in_stock, description=p.description)
+                       currency=get_settings().currency, in_stock=p.in_stock, description=p.description[:500],
+                       source=p.source, brand=p.brand)
 
 
 class PurchaseStatus(BaseModel):

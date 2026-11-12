@@ -9,7 +9,10 @@ import type {
   ConnectedAgent,
   OwnerSession,
   ConnectedAgentCreated,
+  AnalyticsDataset,
+  Channel3SearchResult,
   ConnectorSyncResult,
+  RetailerHandoff,
   MerchantConnector,
   Product,
   ProductUpdateResult,
@@ -37,11 +40,14 @@ export const pactApi = {
   updateProduct: (id: number, updates: { price?: string; in_stock?: boolean }) =>
     api.put<ProductUpdateResult>(`/products/${id}`, updates),
   getConnectors: () => api.get<MerchantConnector[]>('/connectors'),
+  getAnalytics: () => api.get<AnalyticsDataset>('/analytics/dataset'),
   syncConnector: (id: string) => api.post<ConnectorSyncResult>(`/connectors/${id}/sync`),
+  searchChannel3: (query: string, limit = 12) => api.post<Channel3SearchResult>('/connectors/channel3/search', { query, limit }),
+  retailerHandoff: (id: string) => api.post<RetailerHandoff>(`/payments/${id}/retailer-handoff`),
 
   // Proposals
-  generateProposal: (prompt: string, mandate_id: string) =>
-    api.post<ProposalGenerationResponse>('/proposals/generate', { prompt, mandate_id }),
+  generateProposal: (prompt: string, mandate_id: string, source: 'catalog' | 'channel3' = 'catalog') =>
+    api.post<ProposalGenerationResponse>('/proposals/generate', { prompt, mandate_id, source }),
   proposeProduct: (mandate_id: string, product_id: number, source_proposal_id?: string) =>
     api.post<ProposalGenerationResponse>('/proposals/propose', { mandate_id, product_id, source_proposal_id }),
   getProposals: () => api.get<Proposal[]>('/proposals'),

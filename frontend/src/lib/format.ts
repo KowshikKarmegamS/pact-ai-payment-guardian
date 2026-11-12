@@ -167,6 +167,11 @@ const EVENTS: Record<string, EventDef> = {
   AGENT_MANDATE_DENIED: { label: 'Agent used an ungranted mandate', tone: 'bad', category: 'agent', alert: true },
   CATALOG_PRODUCT_CHANGED: { label: 'Catalog price changed', tone: 'caution', category: 'catalog' },
   CONNECTOR_SYNCED: { label: 'Merchant connector synced', tone: 'info', category: 'catalog' },
+  CONNECTOR_SEARCHED: { label: 'Live retailer search (Channel3)', tone: 'info', category: 'catalog' },
+  AGENT_CATALOG_SEARCHED: { label: 'Agent searched products', tone: 'neutral', category: 'agent' },
+  CHANNEL3_OFFER_CHANGED: { label: 'Retailer offer changed', tone: 'caution', category: 'catalog' },
+  CHANNEL3_OFFER_UNVERIFIED: { label: 'Retailer offer could not be re-checked', tone: 'warn', category: 'catalog', alert: true },
+  RETAILER_HANDOFF_OPENED: { label: 'Handed off to retailer', tone: 'info', category: 'paypal' },
   APPROVAL_REVALIDATION_FAILED: { label: 'Approval revalidation failed', tone: 'bad', category: 'approval', alert: true },
 };
 
@@ -248,6 +253,18 @@ export function explainEvent(e: AuditLogEntry): string {
       const a = (d.after ?? {}) as Record<string, unknown>;
       return `${product ?? 'Product'} changed from ${money(str(b.price), cur)} to ${money(str(a.price), cur)}; ${str(d.approvals_invalidated) ?? '0'} approval(s) invalidated.`;
     }
+    case 'CONNECTOR_SEARCHED':
+      return `Channel3 search “${str(d.query) ?? ''}”: ${str(d.offers) ?? '0'} retailer offers (${str(d.created) ?? '0'} new, ${str(d.updated) ?? '0'} changed).`;
+    case 'AGENT_CATALOG_SEARCHED':
+      return `${str(d.agent_name) ?? 'An agent'} searched “${str(d.query) ?? ''}” (${str(d.live_results) ?? '0'} live retailer offers).`;
+    case 'CHANNEL3_OFFER_CHANGED':
+      return d.offer_found === false
+        ? `${product ?? 'Offer'} is no longer listed by ${str(d.merchant) ?? 'the retailer'}; marked out of stock.`
+        : `${product ?? 'Offer'} at ${str(d.merchant) ?? 'the retailer'} changed: ${arr(d.changes).join('; ')}.`;
+    case 'CHANNEL3_OFFER_UNVERIFIED':
+      return `Could not re-check the retailer offer before ${str(d.stage) ?? 'the next step'}; the step was refused. ${str(d.reason) ?? ''}`;
+    case 'RETAILER_HANDOFF_OPENED':
+      return `Buyer handed off to ${str(d.merchant) ?? 'the retailer'} (${str(d.retailer_link_host) ?? ''}). Recorded as a handoff, not as a retailer payment.`;
     case 'CONNECTOR_SYNCED':
       return `${str(d.connector) ?? 'Connector'} synced: ${str(d.created) ?? '0'} new, ${str(d.updated) ?? '0'} changed, ${str(d.delisted) ?? '0'} delisted; ${str(d.approvals_invalidated) ?? '0'} approval(s) invalidated.`;
     default:

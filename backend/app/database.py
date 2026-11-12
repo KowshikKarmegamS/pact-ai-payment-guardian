@@ -43,6 +43,13 @@ def get_db() -> Generator[Session, None, None]:
 _ADDITIVE_COLUMNS = [
     ("products", "source", "VARCHAR(40) NOT NULL DEFAULT 'pact-catalog'"),
     ("products", "external_id", "VARCHAR(120)"),
+    ("products", "brand", "VARCHAR(120)"),
+    ("products", "purchase_url", "VARCHAR(1000)"),
+    ("products", "offer_checked_at", "DATETIME"),
+    ("proposals", "offer_source", "VARCHAR(40)"),
+    ("proposals", "offer_external_id", "VARCHAR(120)"),
+    ("proposals", "purchase_url", "VARCHAR(1000)"),
+    ("proposals", "retailer_handoff_at", "DATETIME"),
     ("mandates", "currency", "VARCHAR(3) NOT NULL DEFAULT 'USD'"),
     ("mandates", "expires_at", "DATETIME"),
     ("mandates", "revoked_at", "DATETIME"),

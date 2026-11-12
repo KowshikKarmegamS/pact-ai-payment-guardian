@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from app.catalog import seed_catalog, seed_mandates
 from app.config import get_settings
 from app.database import SessionLocal, init_db
-from app.routers import agents, audit, connectors, gateway, health, mandates, owner, payments, products, proposals
+from app.routers import agents, analytics, audit, connectors, gateway, health, mandates, owner, payments, products, proposals
 from app.services import owner_auth
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -110,7 +110,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
 
 
-for r in (health, owner, products, connectors, mandates, proposals, payments, audit, agents, gateway):
+for r in (health, owner, products, connectors, mandates, proposals, payments, audit, agents, analytics, gateway):
     app.include_router(r.router, prefix="/api")
 
 

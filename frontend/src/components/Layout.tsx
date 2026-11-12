@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { Activity, CreditCard, LayoutDashboard, Menu, Plug, ScrollText, ShieldCheck, Sparkles, Store, X } from 'lucide-react';
+import { Activity, BarChart3, CreditCard, LayoutDashboard, Menu, Plug, ScrollText, ShieldCheck, Sparkles, Store, X } from 'lucide-react';
 import { pactApi } from '../api/pact';
 import { aiLabel } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
@@ -14,6 +14,7 @@ const NAV = [
   { to: '/agents', label: 'Agents', icon: Plug },
   { to: '/assistant', label: 'Reference agent', icon: Sparkles },
   { to: '/transactions', label: 'Transactions', icon: CreditCard, match: '/proposals' },
+  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/audit', label: 'Audit Trail', icon: Activity },
   { to: '/catalog', label: 'Catalog', icon: Store },
 ];

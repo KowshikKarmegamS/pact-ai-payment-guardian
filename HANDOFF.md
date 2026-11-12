@@ -1,12 +1,12 @@
 # HANDOFF.md — PACT (AI Payment Authorization Gateway)
 
-> Last updated: 2026-11-12 · branch `main`
+> Last updated: 2026-11-12 (sponsor integrations) · branch `main`
 
 ## Current state
 
 | Item | State | How to check |
 |---|---|---|
-| Backend tests | **156 passed** (3 deprecation warnings from Starlette) | `cd backend && pytest -q` |
+| Backend tests | **172 passed** (3 deprecation warnings from Starlette) | `cd backend && pytest -q` |
 | Frontend production build | **passes** (2084 modules, Vite) | `cd frontend && npm run build` |
 | PayPal Sandbox end to end | **verified live**: order `1TB76166AJ238330L`, capture `7HT24116Y1448214M`, COMPLETED, 89.00 USD (final demo run); earlier capture `9XY78096Y6982133J`, 99.99 USD, with duplicate capture prevented | Transactions page / Authorization Receipt |
 | AI recommender | **Gemini `gemini-3.5-flash`** works with the current key (Google reports `gemini-3.6-flash`); backup `gemini-3.5-flash-lite` works and is tried once on 429/500/503; otherwise the labelled keyword fallback ("not AI") | `GET /api/status`; sidebar "Recommender" |
@@ -16,6 +16,11 @@
 | Screenshots | **current** dark UI, 9 images in `docs/screenshots/` (7 desktop 1440x900, 2 mobile 390x844 @2x) | README → Screenshots |
 | Render deployment | **live** at https://pact-ai-payment-guardian.onrender.com (free plan; data resets on restart/sleep). Verified: health 200, PayPal Sandbox OAuth OK, Gemini configured, owner routes 401 until sign-in, agent gateway 401 without key, sign-in screen renders | `/api/status?check_paypal=true` |
 | Merchant connectors | **implemented and tested** (8 tests; manual browser test on a scratch database): `MerchantConnector.fetch_offers()`, bundled Shopify-format Northwind Supply feed, Catalog → Sync, approvals re-verified on sync. **Deployed** (commit `dfa31a0`, 2026-11-12): the live API lists `/api/connectors` and `/api/connectors/{id}/sync`, which return 401 until owner sign-in. A signed-in sync on the live site is not yet tested | `GET /api/connectors` |
+| Channel3 live retailers | **implemented, verified live locally** (scratch DB): search → policy → approval → PayPal Sandbox capture `503249659P3985442` COMPLETED ($31.99, bestbuy.com) → retailer handoff available. Needs `CHANNEL3_API_KEY` on Render (blueprint lists it); not yet deployed | `docs/SPONSORS.md` |
+| AG Studio analytics | **implemented, verified in browser** on real data; Studio agents built a widget via Gemini proxy. Trial watermark until `VITE_AG_STUDIO_LICENSE_KEY` is set | `/analytics` |
+| Automatic payment recording | after PayPal confirms the buyer's approval, the page calls capture automatically (all server checks still run); approving opens PayPal Checkout directly | Authorization page |
+| APIMatic Context Plugin | **not used** (plugin not installed in the coding environment) | `docs/SPONSORS.md` |
+| Render Workflows | **not implemented** (needs Render API key + workflow service) | `docs/SPONSORS.md` |
 | Docker image | **builds and runs locally**; fails closed without `OWNER_PASSWORD` | `docker build -t pact .` |
 
 ## What PACT is
@@ -71,6 +76,9 @@ PayPal capture ID with status COMPLETED and a matching amount and currency.
   steps and read as shaking. Clips still crossfade into each other.
 
 ## Remaining tasks
+
+0. Set `CHANNEL3_API_KEY` (and optionally `VITE_AG_STUDIO_LICENSE_KEY`) in the Render dashboard, then deploy. The demo
+   video predates Channel3, AG Studio and automatic capture (it still shows a Capture click).
 
 1. Watch and listen to `demo/pact-hackathon-final.mp4` once, end to end (listen to the word "Pact" at 2:22).
 2. Upload the video to YouTube (unlisted) or Vimeo and paste that link into Devpost (`docs/DEVPOST.md` has the

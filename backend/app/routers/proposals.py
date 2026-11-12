@@ -1,9 +1,10 @@
 """Proposal generation, policy evaluation, human approval and Authorization Receipts."""
 
 from decimal import Decimal
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -35,7 +36,9 @@ from app.schemas import (
     ReceiptIntegrity,
     ReceiptMandate,
 )
+from app.connectors import ConnectorError
 from app.services.audit import log_audit_event
+from app.services.connector_sync import reverify_live_offer, search_and_import
 from app.services.authorization import (
     canonical_snapshot,
     describe_changes,
@@ -65,6 +68,9 @@ def _fail(http_status: int, code: str, message: str, **extra) -> HTTPException:
 class ShoppingPromptRequest(BaseModel):
     prompt: str = Field(..., min_length=2, max_length=1000, description="Natural-language shopping request")
     mandate_id: str = Field(..., description="Spending mandate that governs this purchase")
+    source: Literal["catalog", "channel3"] = Field(
+        default="catalog",
+        description="'channel3' searches live retailers through Channel3 first; the AI then picks from those offers")
 
 
 class ProposeRequest(BaseModel):
@@ -155,6 +161,10 @@ def _create_and_evaluate(
         agent_name=agent_name,
         agent_request_id=agent_request_id,
     )
+    if product.source != "pact-catalog" and product.purchase_url:
+        proposal.offer_source = product.source
+        proposal.offer_external_id = product.external_id
+        proposal.purchase_url = product.purchase_url
     db.add(proposal)
     db.flush()  # assigns id, idempotency key
 
@@ -203,7 +213,16 @@ async def generate_proposal(request: ShoppingPromptRequest, db: Session = Depend
     if not mandate:
         raise _fail(404, "NOT_FOUND", f"Mandate '{request.mandate_id}' was not found.")
 
-    products = db.query(Product).order_by(Product.id).all()
+    if request.source == "channel3":
+        try:
+            _, found = await run_in_threadpool(search_and_import, db, request.prompt, 10)
+        except ConnectorError as exc:
+            raise _fail(getattr(exc, "status", None) or 502, "CHANNEL3_UNAVAILABLE", f"Live retailer search failed: {exc}")
+        products = ([p for p in found if p.in_stock] or found)[:15]
+        if not products:
+            raise _fail(404, "NO_RESULTS", "Channel3 found no retailer offers in USD for that request.")
+    else:
+        products = db.query(Product).order_by(Product.id).all()
     if not products:
         raise _fail(400, "EMPTY_CATALOG", "Catalog has no products available.")
 
@@ -327,6 +346,12 @@ def approve_proposal(proposal_id: str, body: ProposalApproval, db: Session = Dep
         })
         raise _fail(409, "FINGERPRINT_MISMATCH",
                     "The approval does not match the proposal you are approving. Reload and review it again.")
+
+    try:
+        reverify_live_offer(db, proposal, product, "human approval")
+    except ConnectorError as exc:
+        raise _fail(503, "OFFER_UNVERIFIED", f"PACT could not re-check this retailer offer before approval: {exc} "
+                    "Nothing was approved. Try again in a moment.")
 
     integrity = verify_authorization(db, proposal, mandate, product, require_approval=False)
     if not integrity.ok:

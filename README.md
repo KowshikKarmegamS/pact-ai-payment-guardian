@@ -19,6 +19,8 @@ AI agents can now research products and prepare purchases. The obvious next step
 
 PACT does not replace PayPal's payment security; it adds an independent governance layer for *what an agent is allowed to spend*, and leaves money movement to PayPal.
 
+**New: live retailers through Channel3.** Agents can search 100M+ real products across 25,000+ retailers; every offer still faces the mandate, the fingerprint-bound approval and PayPal. **Spending analytics in AG Studio**, with Studio's AI agents running on Gemini through PACT's server. See [docs/SPONSORS.md](docs/SPONSORS.md) for exactly what each sponsor integration does and what was verified.
+
 Built for the PayPal AI Hackathon. MIT licensed. **Live (owner sign-in required):** https://pact-ai-payment-guardian.onrender.com · **Demo video:** [`demo/pact-hackathon-final.mp4`](demo/pact-hackathon-final.mp4)
 
 ---
@@ -52,6 +54,33 @@ PACT_URL=http://localhost:8001 PACT_AGENT_KEY=pact_agent_… GEMINI_API_KEY=… 
 
 The built-in Gemini shopping assistant is PACT's **reference agent**: it uses the same policy path, so everything below applies to every agent.
 
+## Live retailers through Channel3
+
+[Channel3](https://docs.trychannel3.com) is PACT's live product source: natural-language search over 100M+ products from
+25,000+ retailers. PACT calls it from the running app (Catalog search, the reference agent's **Live retailers** mode, and the
+Agent Gateway / MCP `search_catalog` tool) and normalizes each retailer offer into a catalog item: merchant = retailer
+domain, the real USD price, availability, brand and the buy link. Then the usual rules apply:
+
+- The mandate decides which retailers are allowed. A seeded mandate, *Live retailers (Channel3): desk tech under $100*,
+  allows bestbuy.com, keychron.com, anker.com, logitech.com and newegg.com; anything else is blocked.
+- The approval fingerprint covers the exact retailer listing. Before approval, before the PayPal order and before capture,
+  PACT re-reads the offer from Channel3. A changed price, stock, retailer or listing voids the approval; if Channel3 cannot
+  be reached the step is refused (fail closed).
+- After a verified PayPal Sandbox capture, **Continue to <retailer>** hands the buyer to the retailer's own checkout. PACT
+  records the handoff and never marks a retailer purchase as paid. Agents never receive buy links.
+
+Verified live on 2026-11-12: a bestbuy.com Anker hub offer ($31.99) went from Channel3 search to PayPal Sandbox capture
+`503249659P3985442` (COMPLETED); a bhphotovideo.com offer for the same search was blocked by the merchant rule.
+
+## Spending analytics (AG Studio)
+
+**Analytics** in the Control Center is an [AG Studio](https://www.ag-grid.com/studio/) dashboard over every persisted purchase
+request (`GET /api/analytics/dataset`): paid vs requested vs stopped-by-policy totals, outcomes, spend by agent, merchant,
+source and day, mandate and policy filters, cross-filtering, and a full grid. **Edit dashboard** opens Studio's editor and
+its AI panel: Studio's own agents (Lead, Data, Page, Widget) build and change widgets, with each model turn sent to
+`POST /api/analytics/agent-turn`, which calls Gemini server-side. The dashboard agents can analyse but cannot approve or pay.
+Without a license key AG Studio shows a trial watermark; set `VITE_AG_STUDIO_LICENSE_KEY` at build time to remove it.
+
 ## Connect any store (merchant connectors)
 
 PACT is not tied to its own catalog. A merchant platform plugs in through a **connector**: one class with one method,
@@ -66,8 +95,8 @@ same policy engine, approval fingerprint and PayPal flow as every other item; a 
   feed are marked out of stock. Offers in another currency are skipped and reported. An unreadable feed changes nothing.
 - A mandate still decides which stores are allowed: a synced store that is not on the mandate's merchant list is blocked.
 - Adding a platform (WooCommerce, BigCommerce, a partner API) means writing one `MerchantConnector` subclass and
-  registering it in `app/connectors/__init__.py`. Only the bundled Shopify-format feed exists today; no live store
-  credentials are used.
+  registering it in `app/connectors/__init__.py`. Two connectors exist: Channel3 (live) and the bundled Shopify-format
+  feed.
 
 ## What PACT does
 
@@ -293,11 +322,13 @@ This is the flow in the final video. A fresh database seeds two mandates (*Q1 De
 
 1. **Mandates → New mandate:** *Home Office Essentials*, $200 budget, merchant TechHub, category Electronics, max $100 per item, max quantity 2.
 2. **Reference agent:** "Order the NuPhy Halo75 V2 wireless keyboard for my desk." → $125, **blocked** (unit price). No approve button, no PayPal order.
-3. **Reference agent:** "I need a wireless mechanical keyboard for coding, under $100." → Keychron K8 Pro, $89, 10/10 rules → **Review & authorize** → **Approve $89.00** → **Continue to PayPal Checkout** → approve as the Sandbox buyer → back in PACT, **Capture $89.00** → real capture ID, `COMPLETED`.
+3. **Reference agent:** "I need a wireless mechanical keyboard for coding, under $100." → Keychron K8 Pro, $89, 10/10 rules → **Review & authorize** → **Approve $89.00** → **Continue to PayPal Checkout** → approve as the Sandbox buyer → back in PACT the payment is recorded automatically: the server confirms the buyer's approval with PayPal, re-checks everything and captures → real capture ID, `COMPLETED`. (Approving now opens PayPal Checkout directly.)
 4. **Invalidation:** ask for one more K8 Pro and approve it, then **Catalog → change price** to $99.50. The approval becomes **Approval expired** with the change listed.
 5. **Any agent:** **Agents → Connect an agent**, grant the mandate, then run `integrations/mcp/example_agent.py` with the key (see above). Over-limit requests are refused; in-policy ones wait on the Agents page.
 6. **Any store:** **Catalog → Sync** Northwind Supply (a Shopify-format feed), then ask the reference agent for "the braided USB-C cable from Northwind Supply" under *Home Office Essentials* → **blocked**: the store is not on the mandate.
-7. **Audit Trail:** every step, including agent requests, refusals and connector syncs.
+7. **Live retailers (Channel3):** **Reference agent → Live retailers · Channel3**, mandate *Live retailers*, ask for "Anker 7-in-1 USB-C hub" → a real retailer offer → approve → PayPal → **Continue to <retailer>**. A retailer not on the mandate is blocked.
+8. **Analytics:** the AG Studio dashboard; click a chart to cross-filter, or **Edit dashboard** → AI Assistant → "Where did the guardrail save money?".
+9. **Audit Trail:** every step, including agent requests, refusals, Channel3 searches and offer re-checks, and retailer handoffs.
 
 See [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the narration and [docs/DEVPOST.md](docs/DEVPOST.md) for the submission text.
 
@@ -308,7 +339,7 @@ cd backend && pytest -v
 cd frontend && npm ci && npm run build
 ```
 
-156 backend tests (2026-11-12: `156 passed`) cover the policy engine as pure unit tests (every rule, quantity boundaries, Decimal precision, currency), AI output validation for both providers, Gemini HTTP errors/quota/timeouts/safety blocks against a stubbed endpoint (malformed JSON, wrong types, unknown product IDs, out-of-range quantities, injected fields, fallback reasons), a fully prompt-injected AI being blocked, the full payment lifecycle against an in-memory PayPal fake (capture before buyer approval, order amount/currency/reference mismatches, missing capture ID, PENDING and DECLINED captures, amount mismatch, timeouts with idempotent retry and reconciliation, concurrent capture lock, duplicate capture), approval invalidation (mandate edits, pausing, catalog price drift, tampered rows), cancellation and reopen, audit redaction, Sandbox-only enforcement, the Agent Gateway (scoped keys, revocation, no approve/capture route, idempotent requests), the MCP server, the Gemini backup model on 429/503, owner sign-in (protected routes, HttpOnly cookie, forged/expired tokens, throttling, fail-closed when required but unset), and merchant connectors (Shopify feed parsing, sync, price drift and delisting voiding approvals, unlisted merchants blocked, foreign currency and unreadable feeds). Tests never touch `pact.db`, Gemini, OpenAI or PayPal.
+172 backend tests (2026-11-12: `172 passed`) cover the policy engine as pure unit tests (every rule, quantity boundaries, Decimal precision, currency), AI output validation for both providers, Gemini HTTP errors/quota/timeouts/safety blocks against a stubbed endpoint (malformed JSON, wrong types, unknown product IDs, out-of-range quantities, injected fields, fallback reasons), a fully prompt-injected AI being blocked, the full payment lifecycle against an in-memory PayPal fake (capture before buyer approval, order amount/currency/reference mismatches, missing capture ID, PENDING and DECLINED captures, amount mismatch, timeouts with idempotent retry and reconciliation, concurrent capture lock, duplicate capture), approval invalidation (mandate edits, pausing, catalog price drift, tampered rows), cancellation and reopen, audit redaction, Sandbox-only enforcement, the Agent Gateway (scoped keys, revocation, no approve/capture route, idempotent requests), the MCP server, the Gemini backup model on 429/503, owner sign-in (protected routes, HttpOnly cookie, forged/expired tokens, throttling, fail-closed when required but unset), merchant connectors (Shopify feed parsing, sync, price drift and delisting voiding approvals, unlisted merchants blocked, foreign currency and unreadable feeds), Channel3 (normalization, key only in the header, upstream errors, mandate enforcement, offer bound into the fingerprint, price/stock/listing drift voiding approvals, fail-closed re-checks, rotating tracking ids, capture then retailer handoff, agents never seeing buy links), and the AG Studio dataset and agent proxy (paid counts only verified captures; Studio items to Gemini function calling and back; key stays server-side). Tests never touch `pact.db`, Gemini, OpenAI or PayPal.
 
 ## Deployment (Render)
 
@@ -326,7 +357,8 @@ Status: **deployed** at https://pact-ai-payment-guardian.onrender.com (verified 
 
 - Owner sign-in is a single shared password (`OWNER_PASSWORD`) with a signed session cookie and in-memory login throttling: suitable for a demo or a single owner, not a multi-user product (no accounts, no 2FA, no per-user mandates). With no password set, the Control Center is open to anyone who can reach it; that mode is for local demos only. Agents always authenticate with their own scoped keys.
 - SQLite with a single instance. The capture lock is an atomic row update, which is correct for one process and one database; multiple instances would need Postgres.
-- The catalog is seeded demo data plus one bundled Shopify-format feed. Connectors read offers only; there is no live store integration (no store credentials, no webhooks), and syncs run when the owner clicks Sync.
+- Catalog sources: seeded demo data, the bundled Shopify-format feed, and live Channel3 offers. Connectors read offers only. The retailer handoff opens the retailer's own checkout; PACT does not place or pay retailer orders (PayPal Sandbox money does not reach the retailer).
+- AG Studio is commercial: without `VITE_AG_STUDIO_LICENSE_KEY` it shows a trial watermark. Its agents need Gemini quota; free-tier limits can stop a run.
 - Orders use `PAYPAL_CURRENCY` only; there is no multi-currency support by design.
 - The fingerprint proves the approved values did not change inside PACT; it is not a signature by the user's device.
 - When no AI key is configured, recommendations come from the keyword heuristic and are labelled as such.

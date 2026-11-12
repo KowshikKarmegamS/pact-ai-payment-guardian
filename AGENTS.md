@@ -51,7 +51,7 @@ pact-ai-payment-guardian/
 │   │   │   ├── proposals.py
 │   │   │   ├── payments.py
 │   │   │   └── health.py
-│   │   ├── connectors/       # MerchantConnector interface, Shopify products.json feed (offers only)
+│   │   ├── connectors/       # MerchantConnector interface: Channel3 (live search), Shopify products.json feed
 │   │   └── services/         # audit, mandate budgets, authorization (fingerprint/revalidation), connector sync
 │   ├── tests/                # Pytest test suite
 │   ├── requirements.txt
@@ -119,6 +119,12 @@ Rules for changes:
 - Never set CAPTURED, a capture ID, or a capture status that PayPal did not return.
 - Any new field that affects what the user approved must be added to `canonical_snapshot()`.
 - Money is `Decimal` (`app/money.py`); never float.
+- Live connector offers (Channel3) are re-read before approval, order creation and capture (`reverify_live_offer`);
+  if the source cannot confirm the offer, the step must fail closed. Agents never receive retailer buy links.
+- Retailer handoff (`/api/payments/{id}/retailer-handoff`) is allowed only after a verified capture and must never
+  mark anything as paid at the retailer.
+- The AG Studio agent proxy (`/api/analytics/agent-turn`) is analytics-only: it must never expose PACT purchase,
+  approval or payment tools to the model.
 - Merchant connectors only supply offers into the catalog; they must never decide, approve or pay. A sync that
   changes an offer must re-verify open proposals (`recheck_open_proposals`).
 - Schema changes must be additive and listed in `_ADDITIVE_COLUMNS` (`app/database.py`).
