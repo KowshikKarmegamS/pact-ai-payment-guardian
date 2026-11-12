@@ -24,69 +24,69 @@
   },
   {
    "id": "03-dash",
-   "take": "app1",
+   "take": "v3dash",
    "from": "dash",
-   "to": "mandate",
+   "to": "end",
    "fromOffset": 0.2,
-   "toOffset": -1.2,
+   "toOffset": 0.0,
    "say": "Pact sits between any A I agent and PayPal. Agents can only ask. A deterministic policy engine authorizes, a human approves, and PayPal executes.",
    "caption": "PACT sits between any AI agent and PayPal.|Agents can only ask.|A deterministic policy engine authorizes,|a human approves, and PayPal executes."
   },
   {
-   "id": "04-mandate",
-   "take": "app1",
+   "id": "v3-mandate",
+   "take": "v3mandate",
    "from": "mandate",
-   "to": "blocked_ask",
-   "fromOffset": 0.0,
-   "toOffset": -0.2,
-   "say": "It starts with a spending mandate. This one allows electronics from one merchant, up to one hundred dollars per purchase.",
-   "caption": "It starts with a spending mandate.|This one allows electronics from one merchant,|up to $100 per purchase."
-  },
-  {
-   "id": "05-blocked-ask",
-   "take": "app1",
-   "from": "blocked_ask",
-   "to": "blocked_auth",
-   "fromOffset": 1.2,
-   "toOffset": -0.3,
-   "say": "First, the built-in reference agent is asked for a keyboard that costs one hundred twenty-five dollars. Gemini recommends it.",
-   "caption": "First, the built-in reference agent is asked|for a keyboard that costs $125.|Gemini recommends it."
-  },
-  {
-   "id": "06-blocked",
-   "take": "app1",
-   "from": "blocked_auth",
-   "to": "blocked_end",
+   "to": "end",
    "fromOffset": 0.0,
    "toOffset": 0.0,
+   "say": "Set your rules once. This mandate allows desk tech from five retailers, and lets Pact authorize anything up to one hundred dollars on its own.",
+   "caption": "Set your rules once.|This mandate allows desk tech from five retailers,|and lets PACT authorize anything up to $100 on its own."
+  },
+  {
+   "id": "v3-auto",
+   "take": "v3auto",
+   "from": "ask",
+   "to": "to_paypal",
+   "fromOffset": 0.6,
+   "toOffset": 0.0,
+   "say": "An agent asks for a mouse. Channel Three searches real retailers, Gemini picks the cheapest offer, and every rule passes, so Pact authorizes it by itself. No approval click.",
+   "caption": "An agent asks for a mouse.|Channel3 searches real retailers, Gemini picks the cheapest offer,|and every rule passes, so PACT authorizes it by itself.|No approval click."
+  },
+  {
+   "id": "09-paypal",
+   "take": "v3auto",
+   "from": "paypal_page",
+   "to": "paypal_pay",
+   "fromOffset": 0.0,
+   "toOffset": 0.6,
+   "say": "Pact creates a real PayPal Sandbox order, and the buyer approves it in PayPal Checkout.",
+   "caption": "PACT creates a real PayPal Sandbox order,|and the buyer approves it in PayPal Checkout."
+  },
+  {
+   "id": "v3-captured",
+   "take": "v3auto",
+   "from": "back",
+   "to": "end",
+   "fromOffset": 0.0,
+   "toOffset": 0.0,
+   "say": "The moment PayPal confirms, Pact captures automatically: a real capture I D, completed, for the exact amount. Then the buyer continues to the retailer.",
+   "caption": "The moment PayPal confirms, PACT captures automatically:|a real capture ID, completed, for the exact amount.|Then the buyer continues to the retailer.",
    "zoom": [
     330,
     40,
     1500,
     844
-   ],
-   "say": "Blocked. Attempted, one twenty-five. Allowed, one hundred. No approve button, no PayPal order. The A I cannot override the mandate.",
-   "caption": "Blocked. Attempted $125. Allowed $100.|No approve button, no PayPal order.|The AI cannot override the mandate."
+   ]
   },
   {
-   "id": "07-ok-card",
-   "take": "app2",
-   "from": "ok_ask",
-   "to": "ok_auth",
-   "fromOffset": 1.0,
-   "toOffset": -0.3,
-   "say": "Next, an eighty-nine dollar keyboard passes all ten rules. But passing policy is not authorization.",
-   "caption": "Next, an $89 keyboard passes all ten rules.|But passing policy is not authorization."
-  },
-  {
-   "id": "08-approve",
-   "take": "app2",
-   "from": "ok_auth",
-   "to": "to_paypal",
-   "fromOffset": 0.0,
-   "toOffset": 0.3,
-   "say": "I review the budget impact and approve this exact purchase. My approval is sealed with a fingerprint.",
-   "caption": "I review the budget impact|and approve this exact purchase.|My approval is sealed with a fingerprint."
+   "id": "v3-escalate",
+   "take": "v3escalate",
+   "from": "ask",
+   "to": "end",
+   "fromOffset": 0.6,
+   "toOffset": 0.0,
+   "say": "A keyboard at one hundred nine ninety-nine passes every rule too, but it is above the auto limit. So Pact stops and asks, and my approval is sealed with a fingerprint.",
+   "caption": "A $109.99 keyboard passes every rule too,|but it is above the auto limit.|So PACT stops and asks,|and my approval is sealed with a fingerprint."
   },
   {
    "id": "08b-fingerprint",
@@ -98,70 +98,18 @@
    "caption": "A SHA-256 hash of the product, merchant, price,|quantity, mandate rules and requesting agent.|A forged approval is refused,|and the hash is checked again before every PayPal step."
   },
   {
-   "id": "09-paypal",
-   "take": "app2",
-   "from": "paypal_page",
-   "to": "paypal_pay",
-   "fromOffset": 0.0,
-   "toOffset": 0.6,
-   "say": "Pact creates a real PayPal Sandbox order, and the buyer approves it in PayPal Checkout.",
-   "caption": "PACT creates a real PayPal Sandbox order,|and the buyer approves it in PayPal Checkout."
-  },
-  {
-   "id": "10-verified",
-   "take": "app2",
-   "from": "verified",
-   "to": "capture_click",
-   "fromOffset": 0.0,
-   "toOffset": 0.2,
-   "say": "Back in Pact, the server asks PayPal directly whether the buyer approved. Only then can the payment be captured.",
-   "caption": "Back in PACT, the server asks PayPal directly|whether the buyer approved.|Only then can the payment be captured."
-  },
-  {
-   "id": "11-captured",
-   "take": "app2",
-   "from": "captured",
-   "to": "captured_end",
-   "fromOffset": 0.0,
+   "id": "v3-block",
+   "take": "v3block",
+   "from": "result",
+   "to": "end",
+   "fromOffset": -0.8,
    "toOffset": 0.0,
-   "zoom": [
-    416,
-    28,
-    1344,
-    756
-   ],
-   "say": "Captured. A real PayPal capture I D, status completed, for exactly eighty-nine dollars.",
-   "caption": "Captured.|A real PayPal capture ID, status COMPLETED,|for exactly $89."
-  },
-  {
-   "id": "12-second",
-   "take": "app3",
-   "from": "second_approved",
-   "to": "price_changed",
-   "fromOffset": 0.4,
-   "toOffset": 2.6,
-   "say": "What if something changes after approval? I approve a second keyboard. Then the merchant raises the price.",
-   "caption": "What if something changes after approval?|I approve a second keyboard.|Then the merchant raises the price."
-  },
-  {
-   "id": "13-invalidated",
-   "take": "app3",
-   "from": "invalidated",
-   "to": "invalidated_end",
-   "fromOffset": 0.0,
-   "toOffset": 0.0,
-   "zoom": [
-    330,
-    40,
-    1500,
-    844
-   ],
-   "say": "The approval is void at once. A change can never silently inherit an old approval.",
-   "caption": "The approval is void at once.|A change can never silently inherit an old approval."
+   "say": "And a retailer I never allowed is simply blocked. There is no approve button to override it.",
+   "caption": "And a retailer I never allowed is simply blocked.|There is no approve button to override it."
   },
   {
    "id": "14a-connect",
-   "take": "app5",
+   "take": "v3connect",
    "from": "connect",
    "to": "end",
    "fromOffset": 0.0,
@@ -179,24 +127,14 @@
    "caption": "Claude, ChatGPT or your own agent|use PACT's API or MCP server.|Told money is no object,|this Gemini agent still gets a no."
   },
   {
-   "id": "14c-agents",
-   "take": "app4",
-   "from": "agents",
+   "id": "v3-analytics",
+   "take": "v3analytics",
+   "from": "analytics",
    "to": "end",
    "fromOffset": 0.0,
    "toOffset": 0.0,
-   "say": "In-policy requests wait for you, and every step lands in the audit trail. Agents can ask. Only you approve.",
-   "caption": "In-policy requests wait for you,|and every step lands in the audit trail.|Agents can ask. Only you approve."
-  },
-  {
-   "id": "14d-connectors",
-   "take": "app6",
-   "from": "catalog",
-   "to": "end",
-   "fromOffset": 0.0,
-   "toOffset": 0.0,
-   "say": "And Pact isn't tied to one catalog. A Shopify-format store syncs in, and its offers face the same rules. This cable is blocked, because that store isn't on my mandate.",
-   "caption": "And PACT isn't tied to one catalog.|A Shopify-format store syncs in,|and its offers face the same rules.|This cable is blocked, because that store isn't on my mandate."
+   "say": "Every decision is audited and charted with A G Studio. Its own A I agents can analyze the spending, but they can never approve or pay.",
+   "caption": "Every decision is audited and charted with AG Studio.|Its own AI agents can analyze the spending,|but they can never approve or pay."
   },
   {
    "id": "14e-architecture",

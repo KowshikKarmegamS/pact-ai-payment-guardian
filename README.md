@@ -405,7 +405,7 @@ HANDOFF.md        current state, verified results, next steps
 
 ## Demo video
 
-[`demo/pact-hackathon-final.mp4`](demo/pact-hackathon-final.mp4) in this repository: 2:54, 1920x1080 H.264 + AAC stereo, narrated (Google Gemini TTS) and captioned (`demo/pact-demo-assets/captions.srt`). Narration with timestamps: [`demo/pact-narration.txt`](demo/pact-narration.txt). Not uploaded to YouTube or Vimeo.
+[`demo/pact-hackathon-final.mp4`](demo/pact-hackathon-final.mp4) in this repository: 2:24, 1920x1080 H.264 + AAC stereo, narrated (Google Gemini TTS) and captioned (`demo/pact-demo-assets/captions.srt`). Narration with timestamps: [`demo/pact-narration.txt`](demo/pact-narration.txt). Not uploaded to YouTube or Vimeo.
 
 ## License
 

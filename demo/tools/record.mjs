@@ -7,6 +7,7 @@
 //   app4    Agent Gateway: connected third-party agent, its requests, and one awaiting approval
 //   app5    connecting a new agent (its key is masked before any frame is saved)
 //   app6    syncing the Northwind Supply connector, then a Northwind item blocked by the mandate
+//   v3mandate, v3auto, v3escalate, v3block, v3connect, v3analytics, v3dash  the 2026-11-12 cut
 //   card:<name>  record demo/pact-demo-assets/<name>.html (title cards)
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -34,6 +35,38 @@ async function ask(page, p, text) {
 async function requireGemini(page) {
   const provider = await page.evaluate(async () => (await (await fetch('/api/proposals')).json())[0]?.ai_provider);
   if (provider !== 'gemini') throw new Error(`latest recommendation came from "${provider}", not Gemini; retake`);
+}
+
+
+// ---- v3 (auto-authorization + Channel3 + AG Studio) ----
+const V3_MANDATE = 'Desk tech (auto up to $100)';
+const PROMPT_AUTO = 'Logitech MX Master 3S wireless mouse. Pick the cheapest offer.';
+const PROMPT_ESC = 'Keychron K8 QMK wireless mechanical keyboard, version 2, from Best Buy.';
+const PROMPT_BLOCK = 'Logitech MX Master 3S wireless mouse from 6ave.com.';
+
+async function latest(page) {
+  return page.evaluate(async () => (await (await fetch('/api/proposals')).json())[0]);
+}
+
+async function v3Ask(page, p, text) {
+  await page.goto(BASE + '/assistant');
+  const box = page.getByPlaceholder('Describe what you want to buy…');
+  await box.waitFor();
+  const sel = page.getByLabel('Spending mandate');
+  const id = await sel.evaluate((s, name) => [...s.options].find((o) => o.text.startsWith(name))?.value, V3_MANDATE);
+  await sel.selectOption(id);
+  const live = page.getByRole('radio', { name: 'Live retailers · Channel3' });
+  if ((await live.getAttribute('aria-checked')) !== 'true') await live.click();
+  await sleep(900);
+  return box;
+}
+
+async function v3Expect(page, status) {
+  const prop = await latest(page);
+  if (prop?.ai_provider !== 'gemini') throw new Error(`recommendation came from "${prop?.ai_provider}", not Gemini; retake`);
+  if (prop.status !== status) throw new Error(`expected ${status}, got ${prop.status} (${prop.merchant} $${prop.price}); retake`);
+  console.log(`  ${prop.status}: ${prop.product_name} @ ${prop.merchant} $${prop.price}`);
+  return prop;
 }
 
 const takes = {
@@ -329,6 +362,198 @@ const takes = {
     rec.mark('why');
     await p.hover(page.getByText(/Merchant/).first());
     await sleep(3800);
+    rec.mark('end');
+  },
+  async v3mandate(page, p, rec) {
+    await page.goto(BASE + '/mandates');
+    const card = page.getByRole('heading', { name: V3_MANDATE });
+    await card.waitFor();
+    await sleep(1200);
+    rec.mark('mandate');
+    await p.hover(card);
+    await sleep(1400);
+    await p.hover(page.getByText('Auto-authorizes up to $100.00').first());
+    await sleep(2400);
+    const edit = page.getByRole('button', { name: 'Edit' }).first();  // newest mandate = first card
+    await p.click(edit, { pause: 500 });
+    await page.getByText('Auto-authorize purchases within limits').waitFor();
+    await sleep(800);
+    await p.hover(page.getByLabel('Auto-authorize up to (USD)'));
+    await sleep(2200);
+    await p.hover(page.getByText(/are authorized automatically/));
+    await sleep(3200);
+    rec.mark('end');
+  },
+
+  async v3auto(page, p, rec) {
+    const box = await v3Ask(page, p, PROMPT_AUTO);
+    rec.mark('ask');
+    await p.type(box, PROMPT_AUTO);
+    await sleep(400);
+    await p.click(page.getByRole('button', { name: 'Recommend' }));
+    await page.getByRole('button', { name: /Pay with PayPal|Review & authorize|See why it was blocked/ }).first().waitFor({ timeout: 90000 });
+    await v3Expect(page, 'AUTO_AUTHORIZED');
+    rec.mark('result');
+    await sleep(700);
+    await p.hover(page.getByText('Auto-authorized by your mandate. Payment not started.').first());
+    await sleep(3200);
+    await p.click(page.getByRole('button', { name: 'Pay with PayPal' }).first());
+    await page.getByText('Auto-authorized by your mandate. Payment not started.').first().waitFor();
+    await sleep(600);
+    rec.mark('auth');
+    await p.hover(page.getByText('Auto-authorized by your mandate. Payment not started.').first());
+    await sleep(2600);
+
+    await p.hover(page.getByRole('button', { name: 'Continue to PayPal Checkout' }));
+    await sleep(500);
+    rec.mark('to_paypal');
+    await page.mouse.down();
+    await sleep(90);
+    await page.mouse.up();
+    await sleep(350);
+    rec.suppress = true;
+    await page.waitForURL(/sandbox\.paypal\.com/, { timeout: 90000, waitUntil: 'commit' });
+    const pay = page.getByRole('button', { name: /Complete Purchase|Pay Now|Continue to Review Order/ }).first();
+    const email = page.locator('#email, input[name="login_email"]').first();
+    await Promise.race([pay.waitFor({ timeout: 90000 }), email.waitFor({ timeout: 90000 })]).catch(() => undefined);
+    if (!(await pay.isVisible().catch(() => false))) {
+      console.log('PayPal needs a login. Sign in with the Sandbox buyer account in the window (waiting up to 5 minutes)…');
+      await pay.waitFor({ timeout: 300000 });
+    }
+    await sleep(1500);
+    rec.suppress = false;
+    await page.mouse.move(900, 300);
+    rec.mark('paypal_page');
+    await p.moveTo(960, 420);
+    await sleep(2600);
+    await p.click(pay, { pause: 900 });
+    rec.mark('paypal_pay');
+    await page.waitForURL(new RegExp(BASE.replace(/[.:/]/g, '\\$&') + '/proposals/'), { timeout: 120000, waitUntil: 'commit' });
+    rec.mark('back');
+    await page.getByText('Payment captured and verified with PayPal').waitFor({ timeout: 120000 });
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+    await sleep(800);
+    rec.mark('captured');
+    await p.hover(page.getByText('PayPal capture ID'));
+    await sleep(3000);
+    await p.hover(page.getByRole('button', { name: /Continue to / }));
+    await sleep(3000);
+    rec.mark('end');
+  },
+
+  async v3escalate(page, p, rec) {
+    const box = await v3Ask(page, p, PROMPT_ESC);
+    rec.mark('ask');
+    await p.type(box, PROMPT_ESC);
+    await sleep(400);
+    await p.click(page.getByRole('button', { name: 'Recommend' }));
+    await page.getByRole('button', { name: /Pay with PayPal|Review & authorize|See why it was blocked/ }).first().waitFor({ timeout: 90000 });
+    const prop = await v3Expect(page, 'AWAITING_HUMAN_APPROVAL');
+    if (prop.authorization_decision !== 'REQUIRES_APPROVAL') throw new Error('not an escalation; retake');
+    rec.mark('result');
+    await sleep(600);
+    await p.hover(page.getByText(/auto-authorization limit/).first());
+    await sleep(3000);
+    await p.click(page.getByRole('button', { name: 'Review & authorize' }).first());
+    await page.getByText(/Your authorization is required/).first().waitFor();
+    await sleep(600);
+    rec.mark('auth');
+    await p.hover(page.getByText(/auto-authorization limit/).first());
+    await sleep(2400);
+    await p.hover(page.getByText(/SHA-256 of the product/));
+    await sleep(2600);
+    const approve = page.getByRole('button', { name: /^Approve \$/ });
+    await p.hover(approve);
+    await sleep(900);
+    rec.mark('end');
+  },
+
+  async v3block(page, p, rec) {
+    const box = await v3Ask(page, p, PROMPT_BLOCK);
+    rec.mark('ask');
+    await p.type(box, PROMPT_BLOCK);
+    await sleep(400);
+    await p.click(page.getByRole('button', { name: 'Recommend' }));
+    await page.getByRole('button', { name: /Pay with PayPal|Review & authorize|See why it was blocked/ }).first().waitFor({ timeout: 90000 });
+    await v3Expect(page, 'POLICY_REJECTED');
+    rec.mark('result');
+    await sleep(600);
+    await p.click(page.getByRole('button', { name: 'See why it was blocked' }).first());
+    await page.getByText(/Blocked by the policy engine:/).first().waitFor();
+    await sleep(500);
+    rec.mark('why');
+    await p.hover(page.getByText('Merchant is on the allowlist'));
+    await sleep(2600);
+    await p.hover(page.getByText('Approval and payment unavailable'));
+    await sleep(2600);
+    rec.mark('end');
+  },
+
+  async v3connect(page, p, rec) {
+    await page.goto(BASE + '/agents');
+    await page.getByRole('heading', { name: 'Connected agents' }).waitFor();
+    await sleep(1200);
+    rec.mark('connect');
+    await p.click(page.getByRole('button', { name: 'Connect an agent' }).first());
+    await page.getByLabel('Agent name').waitFor();
+    await sleep(500);
+    await p.type(page.getByLabel('Agent name'), 'Claude Desktop (MCP)', 55);
+    await sleep(400);
+    await p.click(page.getByRole('dialog').getByText(V3_MANDATE));
+    await sleep(900);
+    await p.hover(page.getByRole('button', { name: 'Create agent key' }));
+    await sleep(400);
+    rec.suppress = true;
+    await page.getByRole('button', { name: 'Create agent key' }).click();
+    await page.getByText(/is connected/).waitFor();
+    await page.evaluate(() => {
+      const key = [...document.querySelectorAll('[role="dialog"] *')]
+        .map((el) => (el.childNodes.length === 1 && el.firstChild.nodeType === 3 ? el.textContent.trim() : ''))
+        .find((t) => /^pact_[A-Za-z0-9_-]{20,}$/.test(t));
+      if (!key) throw new Error('agent key not found on screen');
+      const masked = key.slice(0, 13) + '••••••••••••••••••••';
+      const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) if (n.nodeValue.includes(key)) n.nodeValue = n.nodeValue.split(key).join(masked);
+    });
+    await sleep(300);
+    rec.suppress = false;
+    rec.mark('key_shown');
+    await p.hover(page.getByText(/stores only its hash/));
+    await sleep(3000);
+    await p.hover(page.getByText(/MCP server \(Claude Desktop/));
+    await sleep(2400);
+    rec.mark('end');
+  },
+
+  async v3analytics(page, p, rec) {
+    await page.goto(BASE + '/analytics');
+    await page.getByText('Paid through PayPal').waitFor({ timeout: 60000 });
+    await sleep(3000);
+    rec.mark('analytics');
+    await p.moveTo(520, 260);
+    await sleep(1800);
+    await p.hover(page.getByText('How each request was decided'));
+    await sleep(2200);
+    await p.moveTo(1000, 560);
+    await sleep(2200);
+    await p.scroll(500, 1600);
+    await sleep(2400);
+    rec.mark('end');
+  },
+
+  async v3dash(page, p, rec) {
+    await page.goto(BASE + '/');
+    await page.getByText('Authorized spending').waitFor();
+    await sleep(1500);
+    rec.mark('dash');
+    await p.moveTo(700, 420);
+    await sleep(2400);
+    await p.hover(page.getByText('Authorized spending'));
+    await sleep(1600);
+    await p.scroll(520, 1500);
+    await sleep(2600);
+    await p.scroll(-520, 1000);
+    await sleep(800);
     rec.mark('end');
   },
 };

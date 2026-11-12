@@ -39,205 +39,153 @@ A deterministic policy engine authorizes,
 a human approves, and PayPal executes.
 
 11
-00:00:30,133 --> 00:00:32,333
-It starts with a spending mandate.
+00:00:30,133 --> 00:00:31,588
+Set your rules once.
 
 12
-00:00:32,333 --> 00:00:35,162
-This one allows electronics from one merchant,
+00:00:31,588 --> 00:00:34,602
+This mandate allows desk tech from five retailers,
 
 13
-00:00:35,162 --> 00:00:37,088
-up to $100 per purchase.
+00:00:34,602 --> 00:00:38,125
+and lets PACT authorize anything up to $100 on its own.
 
 14
-00:00:37,450 --> 00:00:40,618
-First, the built-in reference agent is asked
+00:00:38,483 --> 00:00:40,470
+An agent asks for a mouse.
 
 15
-00:00:40,618 --> 00:00:42,994
-for a keyboard that costs $125.
+00:00:40,470 --> 00:00:44,792
+Channel3 searches real retailers, Gemini picks the cheapest offer,
 
 16
-00:00:42,994 --> 00:00:45,011
-Gemini recommends it.
+00:00:44,792 --> 00:00:48,473
+and every rule passes, so PACT authorizes it by itself.
 
 17
-00:00:45,367 --> 00:00:48,513
-Blocked. Attempted $125. Allowed $100.
+00:00:48,473 --> 00:00:50,241
+No approval click.
 
 18
-00:00:48,513 --> 00:00:51,454
-No approve button, no PayPal order.
-
-19
-00:00:51,454 --> 00:00:54,645
-The AI cannot override the mandate.
-
-20
-00:00:54,983 --> 00:00:58,551
-Next, an $89 keyboard passes all ten rules.
-
-21
-00:00:58,551 --> 00:01:02,159
-But passing policy is not authorization.
-
-22
-00:01:02,500 --> 00:01:04,114
-I review the budget impact
-
-23
-00:01:04,114 --> 00:01:06,014
-and approve this exact purchase.
-
-24
-00:01:06,014 --> 00:01:08,591
-My approval is sealed with a fingerprint.
-
-25
-00:01:08,950 --> 00:01:12,281
-A SHA-256 hash of the product, merchant, price,
-
-26
-00:01:12,281 --> 00:01:15,492
-quantity, mandate rules and requesting agent.
-
-27
-00:01:15,492 --> 00:01:17,733
-A forged approval is refused,
-
-28
-00:01:17,733 --> 00:01:21,799
-and the hash is checked again before every PayPal step.
-
-29
-00:01:22,133 --> 00:01:24,689
+00:00:50,600 --> 00:00:53,156
 PACT creates a real PayPal Sandbox order,
 
-30
-00:01:24,689 --> 00:01:27,704
+19
+00:00:53,156 --> 00:00:56,171
 and the buyer approves it in PayPal Checkout.
 
+20
+00:00:56,517 --> 00:01:00,308
+The moment PayPal confirms, PACT captures automatically:
+
+21
+00:01:00,308 --> 00:01:03,804
+a real capture ID, completed, for the exact amount.
+
+22
+00:01:03,804 --> 00:01:06,957
+Then the buyer continues to the retailer.
+
+23
+00:01:07,300 --> 00:01:09,842
+A $109.99 keyboard passes every rule too,
+
+24
+00:01:09,842 --> 00:01:11,865
+but it is above the auto limit.
+
+25
+00:01:11,865 --> 00:01:13,473
+So PACT stops and asks,
+
+26
+00:01:13,473 --> 00:01:16,473
+and my approval is sealed with a fingerprint.
+
+27
+00:01:16,816 --> 00:01:20,147
+A SHA-256 hash of the product, merchant, price,
+
+28
+00:01:20,147 --> 00:01:23,358
+quantity, mandate rules and requesting agent.
+
+29
+00:01:23,358 --> 00:01:25,599
+A forged approval is refused,
+
+30
+00:01:25,599 --> 00:01:29,665
+and the hash is checked again before every PayPal step.
+
 31
-00:01:28,050 --> 00:01:30,570
-Back in PACT, the server asks PayPal directly
+00:01:29,999 --> 00:01:32,667
+And a retailer I never allowed is simply blocked.
 
 32
-00:01:30,570 --> 00:01:32,234
-whether the buyer approved.
+00:01:32,667 --> 00:01:35,258
+There is no approve button to override it.
 
 33
-00:01:32,234 --> 00:01:34,671
-Only then can the payment be captured.
-
-34
-00:01:35,033 --> 00:01:36,281
-Captured.
-
-35
-00:01:36,281 --> 00:01:40,022
-A real PayPal capture ID, status COMPLETED,
-
-36
-00:01:40,022 --> 00:01:42,033
-for exactly $89.
-
-37
-00:01:42,383 --> 00:01:44,829
-What if something changes after approval?
-
-38
-00:01:44,829 --> 00:01:46,626
-I approve a second keyboard.
-
-39
-00:01:46,626 --> 00:01:49,022
-Then the merchant raises the price.
-
-40
-00:01:49,367 --> 00:01:51,332
-The approval is void at once.
-
-41
-00:01:51,332 --> 00:01:54,770
-A change can never silently inherit an old approval.
-
-42
-00:01:55,117 --> 00:01:57,858
+00:01:35,616 --> 00:01:38,358
 Connecting an outside agent takes seconds.
 
-43
-00:01:57,858 --> 00:02:00,271
+34
+00:01:38,358 --> 00:01:40,770
 It gets one mandate and its own key,
 
-44
-00:02:00,271 --> 00:02:02,988
+35
+00:01:40,770 --> 00:01:43,487
 shown once and stored only as a hash.
 
-45
-00:02:03,333 --> 00:02:06,360
+36
+00:01:43,833 --> 00:01:46,859
 Claude, ChatGPT or your own agent
 
-46
-00:02:06,360 --> 00:02:09,091
+37
+00:01:46,859 --> 00:01:49,590
 use PACT's API or MCP server.
 
-47
-00:02:09,091 --> 00:02:11,453
+38
+00:01:49,590 --> 00:01:51,952
 Told money is no object,
 
-48
-00:02:11,453 --> 00:02:14,803
+39
+00:01:51,952 --> 00:01:55,302
 this Gemini agent still gets a no.
 
-49
-00:02:15,150 --> 00:02:17,383
-In-policy requests wait for you,
+40
+00:01:55,649 --> 00:01:58,702
+Every decision is audited and charted with AG Studio.
 
-50
-00:02:17,383 --> 00:02:20,064
-and every step lands in the audit trail.
+41
+00:01:58,702 --> 00:02:01,254
+Its own AI agents can analyze the spending,
 
-51
-00:02:20,064 --> 00:02:22,603
-Agents can ask. Only you approve.
+42
+00:02:01,254 --> 00:02:03,605
+but they can never approve or pay.
 
-52
-00:02:22,967 --> 00:02:25,359
-And PACT isn't tied to one catalog.
-
-53
-00:02:25,359 --> 00:02:27,584
-A Shopify-format store syncs in,
-
-54
-00:02:27,584 --> 00:02:29,976
-and its offers face the same rules.
-
-55
-00:02:29,976 --> 00:02:34,120
-This cable is blocked, because that store isn't on my mandate.
-
-56
-00:02:34,483 --> 00:02:38,005
+43
+00:02:03,966 --> 00:02:07,487
 Any platform plugs in with one connector that returns offers.
 
-57
-00:02:38,005 --> 00:02:40,148
+44
+00:02:07,487 --> 00:02:09,631
 The policy engine, the fingerprint
 
-58
-00:02:40,148 --> 00:02:42,490
+45
+00:02:09,631 --> 00:02:11,973
 and the PayPal flow never change.
 
-59
-00:02:42,933 --> 00:02:46,379
+46
+00:02:12,449 --> 00:02:15,895
 Agents request. The policy engine authorizes.
 
-60
-00:02:46,379 --> 00:02:49,110
+47
+00:02:15,895 --> 00:02:18,626
 A human approves. PayPal executes.
 
-61
-00:02:49,110 --> 00:02:53,390
+48
+00:02:18,626 --> 00:02:22,906
 PACT. The payment authorization gateway for AI agents.

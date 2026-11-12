@@ -94,6 +94,7 @@ const RecommendationCard: React.FC<{ id: string; mandateId: string; onNew: (id: 
 
   const p = receipt.proposal;
   const blocked = p.status === 'POLICY_REJECTED';
+  const auto = p.authorization_decision === 'AUTO_APPROVE' && p.status === 'AUTO_AUTHORIZED';
   const failed = receipt.decision_checks.filter((c) => !c.passed);
   const fit = FIT_RULES.map((r) => receipt.decision_checks.find((c) => c.rule === r)).filter((c): c is PolicyCheck => !!c);
   const extraFails = failed.filter((c) => !FIT_RULES.includes(c.rule));
@@ -175,13 +176,19 @@ const RecommendationCard: React.FC<{ id: string; mandateId: string; onNew: (id: 
           {blocked ? <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-bad" /> : <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-ok" />}
           <div>
             <p className="text-sm font-medium text-fg">
-              {blocked ? `Blocked by the policy engine (${failed.length} rule${failed.length === 1 ? '' : 's'} violated)` : 'Policy check passed. Nothing is authorized yet.'}
+              {blocked
+                ? `Blocked by the policy engine (${failed.length} rule${failed.length === 1 ? '' : 's'} violated)`
+                : auto
+                  ? 'Auto-authorized by your mandate. Payment not started.'
+                  : 'Policy check passed. Your approval is required.'}
             </p>
-            <p className="text-xs text-muted">{blocked ? 'This purchase cannot be approved or paid.' : 'Review the proposal and decide whether to authorize the payment.'}</p>
+            <p className="text-xs text-muted">
+              {blocked ? 'This purchase cannot be approved or paid.' : p.decision_reason ?? 'Review the proposal and decide whether to authorize the payment.'}
+            </p>
           </div>
         </div>
         <Button variant={blocked ? 'secondary' : 'primary'} onClick={() => navigate(`/proposals/${p.id}`)} icon={<ArrowRight className="h-4 w-4" />} className="shrink-0 flex-row-reverse">
-          {blocked ? 'See why it was blocked' : p.status === 'AWAITING_HUMAN_APPROVAL' ? 'Review & authorize' : 'Open authorization'}
+          {blocked ? 'See why it was blocked' : p.status === 'AWAITING_HUMAN_APPROVAL' ? 'Review & authorize' : auto ? 'Pay with PayPal' : 'Open authorization'}
         </Button>
       </div>
 
