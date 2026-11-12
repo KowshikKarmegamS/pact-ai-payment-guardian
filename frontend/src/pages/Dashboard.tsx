@@ -2,9 +2,9 @@ import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, ArrowUpRight, Ban, Bot, CreditCard, Plug, Scale, ShieldCheck, Sparkles, UserCheck, Wallet } from 'lucide-react';
 import { pactApi } from '../api/pact';
-import { BudgetRing, DecisionChart, Legend } from '../components/charts';
+import { BudgetRing, Legend } from '../components/charts';
 import { ProductTile } from '../components/ProductTile';
-import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Eyebrow, Meter, RefreshButton, Skeleton, SkeletonRows, StatusPill, TONE_DOT, cx, inputClass } from '../components/ui';
+import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Eyebrow, Meter, Skeleton, SkeletonRows, StatusPill, TONE_DOT, cx, inputClass } from '../components/ui';
 import { MANDATE_STATUS, dateOnly, eventMeta, explainEvent, money, timeAgo, toNumber } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
 
@@ -216,65 +216,6 @@ export const Dashboard: React.FC = () => {
           )}
         </Card>
 
-        {/* Decisions */}
-        <Card className="xl:col-span-2">
-          <CardHeader title="Policy decisions" subtitle="Last 14 days, by outcome" action={<RefreshButton onClick={() => void state.reload()} loading={state.loading} />} />
-          <div className="p-5">
-            {!state.data ? (
-              <Skeleton className="h-40" />
-            ) : (
-              <>
-                <DecisionChart proposals={state.data.proposals} />
-                <div className="mt-4">
-                  <Legend
-                    items={[
-                      { label: 'Captured', className: 'bg-ok', value: m?.capturedCount },
-                      { label: 'Passed policy', className: 'bg-accent', value: (m?.passed ?? 0) - (m?.capturedCount ?? 0) },
-                      { label: 'Blocked', className: 'bg-bad', value: m?.blocked },
-                    ]}
-                  />
-                </div>
-              </>
-            )}
-          </div>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-5">
-        <Card className="xl:col-span-3">
-          <CardHeader
-            title="Recent purchase activity"
-            action={
-              <Link to="/transactions" className="inline-flex items-center gap-1 text-xs font-medium text-muted hover:text-fg">
-                All transactions <ArrowUpRight className="h-3 w-3" />
-              </Link>
-            }
-          />
-          {!state.data ? (
-            <SkeletonRows />
-          ) : state.data.proposals.length === 0 ? (
-            <EmptyState title="No purchases yet" description="Ask PACT for something to see the pipeline in action." />
-          ) : (
-            <ul className="divide-y divide-line">
-              {state.data.proposals.slice(0, 6).map((p) => (
-                <li key={p.id}>
-                  <Link to={`/proposals/${p.id}`} className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-white/[0.03]">
-                    <ProductTile name={p.product_name} category={p.category} size="sm" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm text-fg">{p.product_name}</p>
-                      <p className="text-[11px] text-faint">
-                        {p.merchant} · {timeAgo(p.created_at)}
-                      </p>
-                    </div>
-                    <span className="text-sm font-medium text-fg tnum">{money(p.total_amount, p.currency)}</span>
-                    <StatusPill status={p.status} className="hidden w-[132px] justify-start sm:inline-flex" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
         <Card className="xl:col-span-2">
           <CardHeader
             title="Security events"
@@ -316,6 +257,46 @@ export const Dashboard: React.FC = () => {
           )}
         </Card>
       </div>
+
+      <Card>
+          <CardHeader
+            title="Recent purchase activity"
+            subtitle="Spending trends by agent, merchant and outcome live in Analytics"
+            action={
+              <div className="flex items-center gap-4">
+                <Link to="/analytics" className="inline-flex items-center gap-1 text-xs font-medium text-muted hover:text-fg">
+                  Analytics <ArrowUpRight className="h-3 w-3" />
+                </Link>
+                <Link to="/transactions" className="inline-flex items-center gap-1 text-xs font-medium text-muted hover:text-fg">
+                  All transactions <ArrowUpRight className="h-3 w-3" />
+                </Link>
+              </div>
+            }
+          />
+          {!state.data ? (
+            <SkeletonRows />
+          ) : state.data.proposals.length === 0 ? (
+            <EmptyState title="No purchases yet" description="Ask PACT for something to see the pipeline in action." />
+          ) : (
+            <ul className="divide-y divide-line">
+              {state.data.proposals.slice(0, 6).map((p) => (
+                <li key={p.id}>
+                  <Link to={`/proposals/${p.id}`} className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-white/[0.03]">
+                    <ProductTile name={p.product_name} category={p.category} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm text-fg">{p.product_name}</p>
+                      <p className="text-[11px] text-faint">
+                        {p.merchant} · {timeAgo(p.created_at)}
+                      </p>
+                    </div>
+                    <span className="text-sm font-medium text-fg tnum">{money(p.total_amount, p.currency)}</span>
+                    <StatusPill status={p.status} className="hidden w-[132px] justify-start sm:inline-flex" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
     </div>
   );
 };

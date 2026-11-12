@@ -45,10 +45,6 @@ export function dateOnly(iso: string | null | undefined): string {
   return d ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
 }
 
-export function dayKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 export function timeAgo(iso: string | null | undefined): string {
   const d = parseDate(iso);
   if (!d) return '—';

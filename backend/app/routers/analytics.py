@@ -78,7 +78,7 @@ def purchase_rows(db: Session) -> List[PurchaseRow]:
         rows.append(PurchaseRow(
             purchase_id=p.id,
             day=created.date().isoformat() if created else "",
-            created_at=created.isoformat(timespec="seconds") if created else "",
+            created_at=created.strftime("%Y-%m-%d %H:%M UTC") if created else "",
             product=p.product_name,
             merchant=p.merchant,
             category=p.category,

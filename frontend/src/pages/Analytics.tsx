@@ -49,7 +49,19 @@ const pactGeminiAdapter: AgLlmAdapter = {
 
 const S = 'purchases';
 const f = (field: string, aggregation?: 'sum' | 'count' | 'countd' | 'avg') => ({ id: `${S}.${field}`, ...(aggregation ? { aggregation } : {}) });
-const title = (text: string) => ({ title: { text, enabled: true } });
+const title = (text: string) => ({ title: { text, enabled: true, typography: { fontSize: 14, fontWeight: 'bold' as const } } });
+const chart = (text: string, position: 'bottom' | 'right' = 'bottom') => ({
+  ...title(text),
+  style: { theme: { common: { legend: { enabled: true, position } } } },
+});
+const kpi = (label: string) => ({
+  title: { enabled: false },
+  style: {
+    label: { enabled: true, text: label, position: 'above' as const, typography: { fontSize: 13 }, color: '#98a2b6' },
+    typography: { fontSize: 30, fontWeight: 'bold' as const },
+    verticalAlign: 'center' as const,
+  },
+});
 
 /** The shipped report. Analysts can switch to Edit and change anything; nothing here is sample data. */
 const INITIAL_STATE = {
@@ -59,36 +71,38 @@ const INITIAL_STATE = {
     {
       id: 'spending',
       widgets: {
-        kpiPaid: { type: 'value', format: title('Paid through PayPal'), dataMapping: { value: [f('paid_amount', 'sum')] } },
-        kpiRequested: { type: 'value', format: title('Requested by agents'), dataMapping: { value: [f('requested_amount', 'sum')] } },
-        kpiBlocked: { type: 'value', format: title('Stopped by the policy engine'), dataMapping: { value: [f('blocked_amount', 'sum')] } },
-        kpiCount: { type: 'value', format: title('Purchase requests'), dataMapping: { value: [f('purchase_id', 'countd')] } },
-        outcomes: { type: 'donut-chart', format: title('Outcome of every request'), dataMapping: { categoryKey: [f('outcome')], valueKey: [f('purchase_id', 'countd')] } },
-        byAgent: { type: 'bar-chart-grouped', format: title('Requested amount by AI agent'), dataMapping: { categoryKey: [f('agent')], valueKey: [f('requested_amount', 'sum')] } },
-        byMerchant: { type: 'bar-chart-grouped', format: title('Paid by merchant'), dataMapping: { categoryKey: [f('merchant')], valueKey: [f('paid_amount', 'sum')] } },
-        trend: { type: 'line-chart', format: title('Requests per day'), dataMapping: { categoryKey: [f('day')], valueKey: [f('purchase_id', 'countd')] } },
-        bySource: { type: 'column-chart-grouped', format: title('Requested amount by product source'), dataMapping: { categoryKey: [f('source')], valueKey: [f('requested_amount', 'sum')] } },
-        mandateFilter: { type: 'list-filter', format: title('Mandate'), dataMapping: { value: [f('mandate')] } },
-        policyFilter: { type: 'list-filter', format: title('Policy decision'), dataMapping: { value: [f('decided_by_policy')] } },
+        kpiPaid: { type: 'value', format: kpi('Paid through PayPal'), dataMapping: { value: [f('paid_amount', 'sum')] } },
+        kpiRequested: { type: 'value', format: kpi('Requested by agents'), dataMapping: { value: [f('requested_amount', 'sum')] } },
+        kpiBlocked: { type: 'value', format: kpi('Blocked by policy'), dataMapping: { value: [f('blocked_amount', 'sum')] } },
+        kpiCount: { type: 'value', format: kpi('Purchase requests'), dataMapping: { value: [f('purchase_id', 'countd')] } },
+        byAgent: {
+          type: 'bar-chart-grouped',
+          format: chart('Requested, paid and blocked by agent'),
+          dataMapping: { categoryKey: [f('agent')], valueKey: [f('requested_amount', 'sum'), f('paid_amount', 'sum'), f('blocked_amount', 'sum')] },
+        },
+        outcomes: { type: 'donut-chart', format: chart('Outcome of every request', 'right'), dataMapping: { categoryKey: [f('outcome')], valueKey: [f('purchase_id', 'countd')] } },
+        byMerchant: {
+          type: 'bar-chart-stacked',
+          format: chart('Paid and blocked by merchant'),
+          dataMapping: { categoryKey: [f('merchant')], valueKey: [f('paid_amount', 'sum'), f('blocked_amount', 'sum')] },
+        },
+        bySource: { type: 'donut-chart', format: chart('Requested by product source'), dataMapping: { categoryKey: [f('source')], valueKey: [f('requested_amount', 'sum')] } },
         table: {
           type: 'grid',
           format: { ...title('Every purchase request'), style: { columnAutoSize: true } },
-          dataMapping: { cols: ['created_at', 'agent', 'product', 'merchant', 'source', 'outcome', 'requested_amount', 'paid_amount', 'mandate'].map((x) => f(x)) },
+          dataMapping: { cols: ['created_at', 'agent', 'product', 'merchant', 'outcome', 'requested_amount', 'paid_amount', 'mandate'].map((x) => f(x)) },
         },
       },
       widgetLayout: {
-        kpiPaid: { xTrack: 0, yTrack: 0, xSpan: 6, ySpan: 4 },
-        kpiRequested: { xTrack: 6, yTrack: 0, xSpan: 6, ySpan: 4 },
-        kpiBlocked: { xTrack: 12, yTrack: 0, xSpan: 6, ySpan: 4 },
-        kpiCount: { xTrack: 18, yTrack: 0, xSpan: 6, ySpan: 4 },
-        outcomes: { xTrack: 0, yTrack: 4, xSpan: 8, ySpan: 9 },
-        byAgent: { xTrack: 8, yTrack: 4, xSpan: 8, ySpan: 9 },
-        byMerchant: { xTrack: 16, yTrack: 4, xSpan: 8, ySpan: 9 },
-        trend: { xTrack: 0, yTrack: 13, xSpan: 12, ySpan: 8 },
-        bySource: { xTrack: 12, yTrack: 13, xSpan: 12, ySpan: 8 },
-        mandateFilter: { xTrack: 0, yTrack: 21, xSpan: 5, ySpan: 6 },
-        policyFilter: { xTrack: 0, yTrack: 27, xSpan: 5, ySpan: 4 },
-        table: { xTrack: 5, yTrack: 21, xSpan: 19, ySpan: 10 },
+        kpiPaid: { xTrack: 0, yTrack: 0, xSpan: 6, ySpan: 6 },
+        kpiRequested: { xTrack: 6, yTrack: 0, xSpan: 6, ySpan: 6 },
+        kpiBlocked: { xTrack: 12, yTrack: 0, xSpan: 6, ySpan: 6 },
+        kpiCount: { xTrack: 18, yTrack: 0, xSpan: 6, ySpan: 6 },
+        byAgent: { xTrack: 0, yTrack: 6, xSpan: 14, ySpan: 15 },
+        outcomes: { xTrack: 14, yTrack: 6, xSpan: 10, ySpan: 15 },
+        byMerchant: { xTrack: 0, yTrack: 21, xSpan: 14, ySpan: 24 },
+        bySource: { xTrack: 14, yTrack: 21, xSpan: 10, ySpan: 24 },
+        table: { xTrack: 0, yTrack: 45, xSpan: 24, ySpan: 20 },
       },
     },
   ],
@@ -150,7 +164,7 @@ export const Analytics: React.FC = () => {
       <PageHeader
         eyebrow="Spending analytics · AG Studio"
         title="Where agents tried to spend, and what PACT allowed"
-        description="Built from every persisted purchase request: amounts, outcomes, agents, merchants and sources. Click any chart to cross-filter the page. Edit lets you rearrange or add widgets; the AI panel's agents can query the data and build widgets, but have no way to approve or pay."
+        description="Every persisted purchase request. Click any chart to cross-filter. Edit dashboard opens the editor and AI assistant, which can build widgets but cannot approve or pay."
         actions={
           <div className="flex gap-2">
             <Button variant="secondary" size="sm" icon={mode === 'view' ? <Pencil className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />} onClick={() => setMode(mode === 'view' ? 'edit' : 'view')}>
