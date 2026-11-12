@@ -7,8 +7,8 @@ Last updated 2026-11-12. Only integrations that were actually built and run are 
 | Sponsor prize | Status | Tested | Claim it? |
 |---|---|---|---|
 | **Best Use of Channel3** | Implemented: live search, catalog normalization, Agent Gateway and MCP search, policy enforcement, fingerprint binding, live re-checks, retailer handoff | 11 automated tests (mocked Channel3) plus live runs against `api.trychannel3.com`, including a real PayPal Sandbox capture of a Channel3 offer | **Yes** |
-| **Best Use of AG Grid (AG Studio)** | Implemented: AG Studio dashboard on real PACT data, custom theme, cross-filtering, list filters, edit mode, Studio Agent Framework wired to Gemini through a server-side proxy | 5 automated tests (dataset and proxy) plus a browser run in which Studio's agents built a new widget | **Yes**, with one caveat: no license key is set, so the dashboard shows AG's trial watermark (see below) |
-| **Best Use of APIMatic** | **Not done.** The APIMatic Context Plugin was not installed in the coding environment, so it was not used | Nothing | **No**, unless you install the plugin and the PayPal validation is then done with it |
+| **Best Use of AG Grid (AG Studio)** | Implemented: AG Studio dashboard on real PACT data, custom theme, cross-filtering, Filters panel, edit mode, Studio Agent Framework wired to Gemini through a server-side proxy | 5 automated tests (dataset and proxy) plus a browser run in which Studio's agents built a new widget | **Yes**. The 45-day trial license is set locally (`VITE_AG_STUDIO_LICENSE_KEY`; verified: no license notice, no watermark). Set the same variable on Render for the live site |
+| **Best Use of APIMatic** | Context Plugin for PayPal installed and used: PACT's Orders v2 client reviewed against the PayPal Server SDK 2.4.0 contract; two mismatches fixed (Prefer header, description length), five areas confirmed | 3 contract tests; live Sandbox order after the change | **Yes**, for using the plugin to validate and improve the PayPal integration. PACT does not run the SDK itself |
 | **Best Use of Render** | PACT is deployed on Render (web service + blueprint). **Render Workflows is not implemented.** | Deployment verified earlier (health 200, Sandbox OAuth OK) | **No.** The prize asks for Render Workflows, which needs a Render API key and a separately deployed workflow service that this session cannot create or verify |
 
 ## Channel3 (https://docs.trychannel3.com)
@@ -91,23 +91,41 @@ Last updated 2026-11-12. Only integrations that were actually built and run are 
 - Agent runs take tens of seconds on Gemini free-tier models, and stop when the daily quota is exhausted (the turn then fails with a message).
 - No custom widget type was built. The dashboard uses Studio's built-in widgets.
 
-## APIMatic: not used yet
+## APIMatic: Context Plugin used to validate and tighten the PayPal integration
 
-The sponsor requires using the **APIMatic Context Plugin** to build the PayPal integration. It was not installed in this session. It was not found in the plugin catalog, and no APIMatic tools were available, so **nothing in PACT was built or checked with it**. Do not claim this prize as things stand.
+**How it was used (2026-11-12).** The APIMatic Context Plugin for PayPal was installed from
+`https://github.com/paypaldev/server-sdk-context-plugin-preview` (it adds the `paypal:*` skills to Claude Code). Its
+`paypal:python-getting-started` skill identifies the PayPal Server SDK (`paypal-server-sdk` 2.4.0, APIMatic-generated) and
+tells the coding agent to treat that SDK's source and generated docs as the authoritative contract. Following it, the SDK
+was cloned at tag `2.4.0` (read-only, outside the repo), and PACT's hand-written Orders v2 client (`backend/app/paypal.py`,
+plain `httpx`) was reviewed against `doc/controllers/orders.md` and the request/enum models.
 
-**To enable it** (from APIMatic's "Getting Started" guide linked on the sponsor page):
+PACT kept its own `httpx` client instead of switching to the SDK. It was already working, tested and verified with
+real Sandbox captures, and swapping libraries would have been a cosmetic rewrite. The plugin context was used to check
+the integration and fix what did not match the documented contract.
 
-```bash
-npx context-plugins install https://github.com/paypaldev/server-sdk-context-plugin-preview
-```
+| Checked against the SDK 2.4.0 docs | Finding | Change |
+|---|---|---|
+| `OrdersController.create_order` / `capture_order`: `prefer` header, "**Default**: `return=minimal`", which returns only id, status and HATEOAS links | PACT marks a payment CAPTURED from `purchase_units[].payments.captures` (capture id, status, amount). It worked live only because PayPal returned more than the documented minimum | **Fixed**: create and capture send `Prefer: return=representation` (`PREFER_FULL` in `paypal.py`) |
+| `PurchaseUnitRequest.description`: "content beyond 127 characters … will be truncated" | PACT's description could reach ~152 characters, so PayPal would cut it mid-word | **Fixed**: `order_description()` caps it at 127 and shortens the product name with an ellipsis |
+| `paypal_request_id` header (max 108 characters; stored 6 hours) | `order-<uuid>` / `cap-<uuid>` are 42 and 40 characters, distinct per step | Confirmed, test added |
+| `PaypalWalletExperienceContext` (`brand_name` ≤ 127, `user_action` `PAY_NOW`, `shipping_preference` `NO_SHIPPING`, `return_url`, `cancel_url`); deprecated `application_context` | PACT already uses `payment_source.paypal.experience_context` | Confirmed, test added |
+| `ItemRequest` (`name` ≤ 127, `quantity` pattern `^[1-9][0-9]{0,9}$`, `category` `PHYSICAL_GOODS`) | Matches | Confirmed, test added |
+| `OrderStatus` (`CREATED`, `SAVED`, `APPROVED`, `VOIDED`, `COMPLETED`, `PAYER_ACTION_REQUIRED`) and `CaptureStatus` (`COMPLETED`, `DECLINED`, `PARTIALLY_REFUNDED`, `PENDING`, `REFUNDED`, `FAILED`) | PACT captures only from `APPROVED`, marks CAPTURED only for `COMPLETED` capture + `COMPLETED` order, keeps `PENDING` as pending, and treats every other value as failed | Confirmed |
+| Approval link `rel` for the `payment_source` flow | PACT accepts `payer-action` (and `approve`) | Confirmed |
 
-Then start a **new** Claude Code session in this repository, so the plugin's tools load, and ask for the PayPal validation. The work would be:
-- Pull the Orders v2 context through the plugin.
-- Compare it with `backend/app/paypal.py`: OAuth, create, get, capture, `PayPal-Request-Id` idempotency and error handling.
-- Make only justified fixes, with tests.
-- Record in this file exactly which plugin queries informed which change.
+**Files:** `backend/app/paypal.py` (`PREFER_FULL`, `order_description`, `prefer` on `_authed`) and
+`backend/tests/test_paypal_contract.py`. The contract tests check the Prefer header, the Request-Id length, the body
+constraints and that `application_context` is absent.
 
-The sponsor page also offers free APIMatic subscriptions for participants who used the plugin.
+**Evidence:**
+- All tests pass (191 at the time of the change).
+- Live Sandbox check after the change: PACT created order `377700153L957915M` (PAYER_ACTION_REQUIRED, 125.00 USD, `reference_id` bound to the proposal). The description PayPal stored is the 83-character string PACT sent.
+- Not yet run live: a capture with the new header, because that needs the Sandbox buyer to approve in PayPal. The capture path is covered by the contract test and the existing payment tests.
+
+**Limitations:** PACT does not use the APIMatic-generated SDK at runtime; the plugin served as the reference for
+reviewing and correcting the existing integration. The APIMatic sponsor page offers free subscriptions to participants
+who used the plugin: claim it with the form linked there.
 
 ## Render: deployed, Workflows not implemented
 

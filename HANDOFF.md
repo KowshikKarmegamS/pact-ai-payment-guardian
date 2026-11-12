@@ -6,7 +6,7 @@
 
 | Item | State | How to check |
 |---|---|---|
-| Backend tests | **188 passed** (3 deprecation warnings from Starlette) | `cd backend && pytest -q` |
+| Backend tests | **191 passed** (3 deprecation warnings from Starlette) | `cd backend && pytest -q` |
 | Frontend production build | **passes** (2084 modules, Vite) | `cd frontend && npm run build` |
 | PayPal Sandbox end to end | **verified live**: order `1TB76166AJ238330L`, capture `7HT24116Y1448214M`, COMPLETED, 89.00 USD (final demo run); earlier capture `9XY78096Y6982133J`, 99.99 USD, with duplicate capture prevented | Transactions page / Authorization Receipt |
 | AI recommender | **Gemini `gemini-3.5-flash`** works with the current key (Google reports `gemini-3.6-flash`); backup `gemini-3.5-flash-lite` works and is tried once on 429/500/503; otherwise the labelled keyword fallback ("not AI") | `GET /api/status`; sidebar "Recommender" |
@@ -18,9 +18,10 @@
 | Merchant connectors | **implemented and tested** (8 tests; manual browser test on a scratch database): `MerchantConnector.fetch_offers()`, bundled Shopify-format Northwind Supply feed, Catalog → Sync, approvals re-verified on sync. **Deployed** (commit `dfa31a0`, 2026-11-12): the live API lists `/api/connectors` and `/api/connectors/{id}/sync`, which return 401 until owner sign-in. A signed-in sync on the live site is not yet tested | `GET /api/connectors` |
 | Auto-authorization | **implemented, tested, verified locally**: three outcomes (auto / needs approval / blocked), mandate `authorization_mode` + `max_auto_approve_amount` (default unchanged), per-mandate budget lock with race tests, auto terms in the fingerprint. Scenario run on a scratch DB: $89 auto-authorized → real PayPal Sandbox order `6JR16394Y8779803T` (capture refused until buyer approval); $125 escalated; $299.99 blocked | README → Auto-authorization |
 | Channel3 live retailers | **implemented, verified live locally** (scratch DB): search → policy → approval → PayPal Sandbox capture `503249659P3985442` COMPLETED ($31.99, bestbuy.com) → retailer handoff available. Needs `CHANNEL3_API_KEY` on Render (blueprint lists it); not yet deployed | `docs/SPONSORS.md` |
+| Channel3 scheduled sync | **defined, tested, not deployed**: Render cron `pact-channel3-sync` in `render.yaml` (every 6 h UTC, `scripts/channel3_sync.py`, 12 mocked tests). Verified locally against a real server: wrong password → 401 `OWNER_LOGIN_FAILED`, no key → 503 `CONNECTOR_NOT_CONFIGURED`, with key → 23 offers created. Render rejects the blueprint with `need_payment_info` until the workspace has a payment method (cron jobs have no free plan). The live service also lacks `CHANNEL3_API_KEY` | `python scripts/channel3_sync.py` |
 | AG Studio analytics | **implemented, verified in browser** on real data; Studio agents built a widget via Gemini proxy. Trial watermark until `VITE_AG_STUDIO_LICENSE_KEY` is set | `/analytics` |
 | Automatic payment recording | after PayPal confirms the buyer's approval, the page calls capture automatically (all server checks still run); approving opens PayPal Checkout directly | Authorization page |
-| APIMatic Context Plugin | **not used** (plugin not installed in the coding environment) | `docs/SPONSORS.md` |
+| APIMatic Context Plugin | **used**: Orders v2 client reviewed against PayPal Server SDK 2.4.0; `Prefer: return=representation` and the 127-char description cap added with contract tests; live Sandbox order `377700153L957915M` after the change | `docs/SPONSORS.md` |
 | Render Workflows | **not implemented** (needs Render API key + workflow service) | `docs/SPONSORS.md` |
 | Docker image | **builds and runs locally**; fails closed without `OWNER_PASSWORD` | `docker build -t pact .` |
 
@@ -80,6 +81,9 @@ PayPal capture ID with status COMPLETED and a matching amount and currency.
 
 0. Set `CHANNEL3_API_KEY` (and optionally `VITE_AG_STUDIO_LICENSE_KEY`) in the Render dashboard, then deploy. The demo
    video predates Channel3, AG Studio and automatic capture (it still shows a Capture click).
+   For the scheduled sync cron: add a payment method in Render (Workspace → Billing), push `render.yaml`
+   (the blueprint auto-syncs from `main` and creates `pact-channel3-sync`), then **Trigger Run** and check its logs
+   for `channel3-sync: ok {...}`.
 
 1. Watch and listen to `demo/pact-hackathon-final.mp4` once, end to end (listen to the word "Pact" at 2:22).
 2. Upload the video to YouTube (unlisted) or Vimeo and paste that link into Devpost (`docs/DEVPOST.md` has the

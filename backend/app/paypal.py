@@ -199,11 +199,20 @@ async def get_access_token(force_refresh: bool = False) -> str:
     return token
 
 
-async def _authed(method: str, path: str, context: str, request_id: Optional[str] = None, **kwargs) -> httpx.Response:
+# Orders v2 defaults to "Prefer: return=minimal" (id, status and links only; see the PayPal Server SDK's
+# OrdersController docs). PACT verifies captures from purchase_units[].payments.captures, so it always asks
+# for the full representation instead of relying on PayPal returning more than the documented minimum.
+PREFER_FULL = "return=representation"
+
+
+async def _authed(method: str, path: str, context: str, request_id: Optional[str] = None,
+                  prefer: Optional[str] = None, **kwargs) -> httpx.Response:
     token = await get_access_token()
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json", "Accept": "application/json"}
     if request_id:
         headers["PayPal-Request-Id"] = request_id
+    if prefer:
+        headers["Prefer"] = prefer
     response = await _request(method, path, context=context, headers=headers, **kwargs)
     if response.status_code == 401:
         # Token revoked/expired early: refresh once.
@@ -211,6 +220,21 @@ async def _authed(method: str, path: str, context: str, request_id: Optional[str
         headers["Authorization"] = f"Bearer {token}"
         response = await _request(method, path, context=context, headers=headers, **kwargs)
     return response
+
+
+# purchase_units[].description: content beyond 127 characters is truncated by PayPal (PayPal Server SDK
+# PurchaseUnitRequest docs), so PACT cuts it itself and controls what the buyer sees.
+DESCRIPTION_MAX = 127
+
+
+def order_description(product_name: str, merchant: str) -> str:
+    prefix, joiner = "PACT authorized purchase: ", " from "
+    store = merchant.strip()[:40]
+    room = DESCRIPTION_MAX - len(prefix) - len(joiner) - len(store)
+    name = product_name.strip()
+    if len(name) > room:
+        name = name[: max(room - 1, 1)].rstrip() + "…"
+    return f"{prefix}{name}{joiner}{store}"[:DESCRIPTION_MAX]
 
 
 def _approve_link(data: Dict[str, Any]) -> Optional[str]:
@@ -242,7 +266,7 @@ async def create_order(
             {
                 "reference_id": str(proposal_id),
                 "custom_id": str(mandate_id),
-                "description": f"PACT authorized purchase: {product_name[:80]} from {merchant[:40]}",
+                "description": order_description(product_name, merchant),
                 "amount": {
                     "currency_code": currency,
                     "value": total,
@@ -271,7 +295,8 @@ async def create_order(
         },
     }
     response = await _authed(
-        "POST", "/v2/checkout/orders", "order creation", request_id=f"order-{idempotency_key}", json=payload
+        "POST", "/v2/checkout/orders", "order creation", request_id=f"order-{idempotency_key}",
+        prefer=PREFER_FULL, json=payload,
     )
     if response.status_code not in (200, 201):
         raise _parse_error(response, "order creation")
@@ -295,7 +320,8 @@ async def get_order_details(order_id: str) -> Dict[str, Any]:
 async def capture_order(order_id: str, idempotency_key: str) -> Dict[str, Any]:
     """Capture an approved order. PayPal-Request-Id makes retries return the same capture."""
     response = await _authed(
-        "POST", f"/v2/checkout/orders/{order_id}/capture", "payment capture", request_id=f"cap-{idempotency_key}"
+        "POST", f"/v2/checkout/orders/{order_id}/capture", "payment capture", request_id=f"cap-{idempotency_key}",
+        prefer=PREFER_FULL,
     )
     if response.status_code not in (200, 201):
         raise _parse_error(response, "payment capture")
