@@ -220,14 +220,14 @@ export const ShoppingAssistant: React.FC = () => {
   const status = useAsync(() => pactApi.getStatus());
   const connectors = useAsync(() => pactApi.getConnectors());
   const liveAvailable = !!connectors.data?.find((c) => c.id === 'channel3')?.configured;
-  const [source, setSource] = useState<'catalog' | 'channel3'>(() => {
+  const [source, setSource] = useState<'demo-store' | 'channel3'>(() => {
     try {
-      return sessionStorage.getItem('pact.assistant.source') === 'channel3' ? 'channel3' : 'catalog';
+      return sessionStorage.getItem('pact.assistant.source') === 'demo-store' ? 'demo-store' : 'channel3';
     } catch {
-      return 'catalog';
+      return 'channel3';
     }
   });
-  const effectiveSource = liveAvailable ? source : 'catalog';
+  const effectiveSource = liveAvailable ? source : 'demo-store';
   const [mandateId, setMandateId] = useState('');
   const [prompt, setPrompt] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -288,7 +288,7 @@ export const ShoppingAssistant: React.FC = () => {
       <PageHeader
         eyebrow="Reference agent · built-in Gemini shopping assistant"
         title="What do you need?"
-        description="One example of an AI agent using PACT. It picks one item, from PACT's catalog or from live retailer offers found by Channel3; prices and merchants come from the catalog or the retailer, the decision comes from your mandate, and payment needs your approval. External agents use the same path through the Agent Gateway."
+        description="One example of an AI agent using PACT. It picks one item from a merchant connector: live retailer offers found by Channel3, or the fixed-price Demo Store; prices and merchants come from the connector, the decision comes from your mandate, and payment needs your approval. External agents use the same path through the Agent Gateway."
       />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
@@ -303,7 +303,7 @@ export const ShoppingAssistant: React.FC = () => {
               <div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
                 <span className="text-faint">Shop from</span>
                 <div role="radiogroup" aria-label="Product source" className="inline-flex rounded-lg border border-line bg-ink/40 p-0.5">
-                  {([['catalog', 'PACT catalog'], ['channel3', 'Live retailers · Channel3']] as const).map(([id, label]) => {
+                  {([['channel3', 'Live retailers · Channel3'], ['demo-store', 'Demo Store']] as const).map(([id, label]) => {
                     const on = effectiveSource === id;
                     const disabled = id === 'channel3' && !liveAvailable;
                     return (

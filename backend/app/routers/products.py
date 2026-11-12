@@ -66,6 +66,11 @@ def update_product(product_id: int, payload: ProductUpdate, db: Session = Depend
     if not product:
         raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": f"Product {product_id} not found."})
 
+    if product.source != "demo-store":
+        raise HTTPException(status_code=409, detail={
+            "code": "LIVE_OFFER", "message": "This price comes from a live retailer and is re-checked with Channel3 before "
+                                             "approval, order and capture. Only Demo Store prices can be changed here."})
+
     before = {"price": f"{q(product.price):.2f}", "in_stock": product.in_stock}
     if payload.price is not None:
         product.price = q(payload.price)

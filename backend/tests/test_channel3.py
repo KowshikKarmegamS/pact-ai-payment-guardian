@@ -331,6 +331,12 @@ def test_scheduled_sync_reverifies_open_approvals(client, db_session, c3, retail
     assert db_session.get(Proposal, p["id"]).status == ProposalStatus.APPROVAL_EXPIRED
 
     listed = {c["id"]: c for c in client.get("/api/connectors").json()}
-    assert set(listed) == {"pact-catalog", "channel3"}
-    assert listed["channel3"]["last_synced_at"] is not None and listed["pact-catalog"]["syncable"] is False
+    assert set(listed) == {"demo-store", "channel3"}
+    assert listed["channel3"]["last_synced_at"] is not None and listed["channel3"]["searchable"] is True
     assert client.post("/api/connectors/unknown/sync").status_code == 404
+
+
+def test_live_offer_prices_cannot_be_edited_by_hand(client, db_session, c3):
+    _search(client)
+    res = client.put(f"/api/products/{_product(db_session, 'bestbuy.com').id}", json={"price": "1.00"})
+    assert res.status_code == 409 and res.json()["detail"]["code"] == "LIVE_OFFER"

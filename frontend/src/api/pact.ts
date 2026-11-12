@@ -46,7 +46,7 @@ export const pactApi = {
   retailerHandoff: (id: string) => api.post<RetailerHandoff>(`/payments/${id}/retailer-handoff`),
 
   // Proposals
-  generateProposal: (prompt: string, mandate_id: string, source: 'catalog' | 'channel3' = 'catalog') =>
+  generateProposal: (prompt: string, mandate_id: string, source: 'demo-store' | 'channel3' = 'demo-store') =>
     api.post<ProposalGenerationResponse>('/proposals/generate', { prompt, mandate_id, source }),
   proposeProduct: (mandate_id: string, product_id: number, source_proposal_id?: string) =>
     api.post<ProposalGenerationResponse>('/proposals/propose', { mandate_id, product_id, source_proposal_id }),

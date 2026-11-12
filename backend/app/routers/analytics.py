@@ -32,7 +32,7 @@ OUTCOME = {
     ProposalStatus.PAYMENT_FAILED: "Payment failed",
 }
 
-SOURCE = {None: "PACT catalog", "pact-catalog": "PACT catalog", "channel3": "Channel3 (live retailers)"}
+SOURCE = {None: "Demo Store", "demo-store": "Demo Store", "channel3": "Channel3 (live retailers)"}
 
 
 class PurchaseRow(BaseModel):
@@ -85,7 +85,7 @@ def purchase_rows(db: Session) -> List[PurchaseRow]:
             merchant=p.merchant,
             category=p.category,
             agent=p.agent_name or "PACT reference agent",
-            source=SOURCE.get(p.offer_source, p.offer_source or "PACT catalog"),
+            source=SOURCE.get(p.offer_source, p.offer_source or "Demo Store"),
             mandate=mandates.get(p.mandate_id, "Deleted mandate"),
             outcome=OUTCOME.get(p.status, p.status.value),
             status=p.status.value,

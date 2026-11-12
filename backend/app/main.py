@@ -11,11 +11,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.catalog import seed_catalog, seed_mandates
+from app.catalog import seed_mandates
 from app.config import get_settings
 from app.database import SessionLocal, init_db
 from app.routers import agents, analytics, audit, connectors, gateway, health, mandates, owner, payments, products, proposals
 from app.services import owner_auth
+from app.services.connector_sync import seed_demo_store
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("pact.app")
@@ -33,7 +34,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     init_db()
     db = SessionLocal()
     try:
-        seed_catalog(db)
+        seed_demo_store(db)
         seed_mandates(db)
     finally:
         db.close()

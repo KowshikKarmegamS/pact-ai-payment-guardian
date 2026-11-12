@@ -97,7 +97,7 @@ class Product(Base):
     merchant = Column(String(100), nullable=False, index=True)
     image_url = Column(String(500), nullable=True)
     in_stock = Column(Boolean, nullable=False, default=True)
-    source = Column(String(40), nullable=False, default="pact-catalog", index=True)
+    source = Column(String(40), nullable=False, default="demo-store", index=True)
     external_id = Column(String(120), nullable=True)
     brand = Column(String(120), nullable=True)
     purchase_url = Column(String(1000), nullable=True)

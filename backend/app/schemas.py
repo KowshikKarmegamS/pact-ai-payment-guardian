@@ -27,7 +27,7 @@ class ProductBase(BaseModel):
 
 class ProductOut(ProductBase):
     id: int = Field(..., description="Unique product identifier")
-    source: str = Field(default="pact-catalog", description="Merchant connector that supplied this offer")
+    source: str = Field(default="demo-store", description="Merchant connector that supplied this offer")
     external_id: Optional[str] = Field(default=None, description="The offer's id on the source platform")
     brand: Optional[str] = None
     purchase_url: Optional[str] = Field(default=None, description="Retailer buy link (live connector offers)")

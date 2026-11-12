@@ -13,7 +13,8 @@ from typing import List, Optional, Set, Tuple
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.connectors import Channel3Connector, ConnectorError, MerchantConnector, Offer, get_connector
+from app.connectors import DEMO_STORE, Channel3Connector, ConnectorError, MerchantConnector, Offer, get_connector
+from app.connectors.demo_store import slug
 from app.connectors.base import stable_buy_link
 from app.models import Product, Proposal, utc_now
 from app.money import q
@@ -193,3 +194,19 @@ def reverify_live_offer(db: Session, proposal: Proposal, product: Optional[Produ
     except ConnectorError as exc:
         log_audit_event(db, "CHANNEL3_OFFER_UNVERIFIED", "Proposal", proposal.id, {"stage": stage, "reason": str(exc)})
         raise
+
+
+def seed_demo_store(db: Session) -> None:
+    """First start: load the Demo Store's offers through the connector path. Never overwrites later edits.
+
+    Databases from before connectors stored these items with source "pact-catalog"; they are re-attributed to
+    the Demo Store connector so every product has a real source.
+    """
+    legacy = db.query(Product).filter(Product.source.in_(("pact-catalog", ""))).all()
+    for p in legacy:
+        p.source, p.external_id = DEMO_STORE, slug(p.name)
+    if legacy:
+        db.commit()
+    if db.query(Product).filter(Product.source == DEMO_STORE).count() == 0:
+        connector = get_connector(DEMO_STORE)
+        apply_offers(db, connector, connector.fetch_offers(), delist_missing=False)

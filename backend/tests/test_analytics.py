@@ -22,7 +22,7 @@ def test_dataset_reflects_real_proposals(client, sample_mandate, sample_product,
         ("Rejected by owner", 34.99, 0.0, 0.0)
     assert (r_bad["outcome"], r_bad["decided_by_policy"], r_bad["blocked_amount"]) == ("Blocked by policy", "Blocked", 79.99)
     assert r_ok["agent"] == "PACT reference agent" and r_ok["mandate"] == sample_mandate.name
-    assert r_ok["source"] == "PACT catalog" and len(r_ok["day"]) == 10
+    assert r_ok["source"] == "Demo Store" and len(r_ok["day"]) == 10
 
 
 def test_paid_amount_only_counts_verified_captures(client, sample_mandate, sample_product, fake_paypal):

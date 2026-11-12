@@ -9,7 +9,7 @@ Last updated 2026-11-12. Only integrations that were actually built and run are 
 | **Best Use of Channel3** | Implemented: live search, catalog normalization, Agent Gateway and MCP search, policy enforcement, fingerprint binding, live re-checks, retailer handoff | 11 automated tests (mocked Channel3) plus live runs against `api.trychannel3.com`, including a real PayPal Sandbox capture of a Channel3 offer | **Yes** |
 | **Best Use of AG Grid (AG Studio)** | Implemented: AG Studio dashboard on real PACT data, custom theme, cross-filtering, Filters panel, edit mode, Studio Agent Framework wired to Gemini through a server-side proxy | 5 automated tests (dataset and proxy) plus a browser run in which Studio's agents built a new widget | **Yes**. The 45-day trial license is set locally (`VITE_AG_STUDIO_LICENSE_KEY`; verified: no license notice, no watermark). Set the same variable on Render for the live site |
 | **Best Use of APIMatic** | Context Plugin for PayPal installed and used: PACT's Orders v2 client reviewed against the PayPal Server SDK 2.4.0 contract; two mismatches fixed (Prefer header, description length), five areas confirmed | 3 contract tests; live Sandbox order after the change | **Yes**, for using the plugin to validate and improve the PayPal integration. PACT does not run the SDK itself |
-| **Best Use of Render** | PACT is deployed on Render (web service + blueprint). **Render Workflows is not implemented.** | Deployment verified earlier (health 200, Sandbox OAuth OK) | **No.** The prize asks for Render Workflows, which needs a Render API key and a separately deployed workflow service that this session cannot create or verify |
+| **Best Use of Render** | Deployed on Render (free plan). Workflows and cron are not available on the free plan, so they were not built | Deployment verified (health 200, Sandbox OAuth OK) | **No** |
 
 ## Channel3 (https://docs.trychannel3.com)
 
@@ -60,7 +60,7 @@ Last updated 2026-11-12. Only integrations that were actually built and run are 
 ## AG Grid: AG Studio (`ag-studio-react` / `ag-studio` 3.1.0)
 
 **What it does in PACT:** a new **Analytics** page in the Control Center (`/analytics`).
-- **Data.** `GET /api/analytics/dataset` returns one row per persisted purchase request: agent, merchant, source (PACT catalog or Channel3), mandate, outcome, policy decision, requested, paid and blocked amounts. Paid counts only verified PayPal captures. Nothing is sample or generated data.
+- **Data.** `GET /api/analytics/dataset` returns one row per persisted purchase request: agent, merchant, source (Channel3 or Demo Store), mandate, outcome, policy decision, requested, paid and blocked amounts. Paid counts only verified PayPal captures. Nothing is sample or generated data.
 - **Shipped report.** It has:
   - KPI tiles: paid through PayPal, requested by agents, stopped by the policy engine, number of requests.
   - Charts: outcome donut, amount by AI agent, paid by merchant, requests per day, amount by product source.
@@ -127,15 +127,9 @@ constraints and that `application_context` is absent.
 reviewing and correcting the existing integration. The APIMatic sponsor page offers free subscriptions to participants
 who used the plugin: claim it with the form linked there.
 
-## Render: deployed, Workflows not implemented
+## Render: hosting only
 
-PACT runs on Render: `render.yaml` + `Dockerfile`, at https://pact-ai-payment-guardian.onrender.com. The Render prize asks for **Render Workflows** (the Python SDK `render`, with tasks defined as functions). That was not built, because:
-- It needs a Render API key (`RENDER_API_KEY`) and a workflow service created in your Render workspace. This session cannot create or verify either, and free-plan support for Workflows is not confirmed in Render's docs.
-- Workflow runs execute on their own instances and cannot write to the web service's SQLite in `/tmp`. A correct design would have the workflow call Channel3 and push validated offers to a PACT ingest endpoint, or move PACT to Render Postgres.
-
-A simulated workflow (a thread or a cron job presented as Workflows) was deliberately not built.
-
-**If you want it:**
-1. Add the Render plugin to Claude Code (the Anthropic plugin directory lists "Render", with a `render-workflows` skill and the Render MCP server).
-2. Create a Render API key.
-3. Ask for a Channel3 catalog-sync workflow that calls PACT's existing `POST /api/connectors/channel3/sync` path with retries.
+PACT is deployed on Render's free plan (`render.yaml` + `Dockerfile`, https://pact-ai-payment-guardian.onrender.com).
+The Render prize asks for **Render Workflows**; neither Workflows nor cron jobs are available on the free plan, so they
+were not built, and no thread or scheduled job is presented as a substitute. Channel3 offers are refreshed on demand
+(Catalog → Sync, and live re-checks before approval, order and capture).

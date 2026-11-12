@@ -50,7 +50,7 @@ _ADDITIVE_COLUMNS = [
     ("proposals", "decision_reason", "TEXT"),
     ("proposals", "authorized_by", "VARCHAR(20)"),
     ("proposals", "budget_reserved_at", "DATETIME"),
-    ("products", "source", "VARCHAR(40) NOT NULL DEFAULT 'pact-catalog'"),
+    ("products", "source", "VARCHAR(40) NOT NULL DEFAULT 'demo-store'"),
     ("products", "external_id", "VARCHAR(120)"),
     ("products", "brand", "VARCHAR(120)"),
     ("products", "purchase_url", "VARCHAR(1000)"),

@@ -138,7 +138,7 @@ const FIELDS: AgFieldDefinition[] = [
 const PROMPT_STARTERS = [
   { label: 'Where did the guardrail save money?', prompt: 'Which merchants and agents had the most blocked spending? Add a widget that shows it.' },
   { label: 'Agent leaderboard', prompt: 'Compare AI agents by number of requests, amount requested and amount actually paid.' },
-  { label: 'Live retailer spend', prompt: 'How much was requested from live Channel3 retailers versus the PACT catalog, and what share was paid?' },
+  { label: 'Live retailer spend', prompt: 'How much was requested from live Channel3 retailers versus the Demo Store, and what share was paid?' },
 ];
 
 const theme = studioTheme.withParams(

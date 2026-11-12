@@ -59,7 +59,7 @@ Before you start:
 Steps:
 
 1. **Control Center:** the pitch, from the narration above.
-2. **Reference agent:** "Order the NuPhy Halo75 V2 wireless keyboard for my desk." → blocked, $125 against $100.
+2. **Reference agent → Demo Store** (the fixed-price connector; Live retailers is the default): "Order the NuPhy Halo75 V2 wireless keyboard for my desk." → blocked, $125 against $100.
 3. **Reference agent:** "I need a wireless mechanical keyboard for coding, under $100." → Keychron K8 Pro $89 →
    **Review & authorize** → **Approve $89.00** (opens PayPal Checkout) → approve as the buyer → back in PACT the
    capture happens automatically once the server confirms the buyer's approval with PayPal.

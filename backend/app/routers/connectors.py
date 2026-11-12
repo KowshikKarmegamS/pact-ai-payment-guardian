@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.connectors import BUILTIN_SOURCE, ConnectorError, all_connectors, get_connector
+from app.connectors import ConnectorError, all_connectors, get_connector
 from app.database import get_db
 from app.models import AuditLog, Product
 from app.schemas import ProductOut
@@ -50,11 +50,7 @@ def _counts(db: Session, source: str) -> tuple:
 
 @router.get("", response_model=List[ConnectorOut])
 def list_connectors(db: Session = Depends(get_db)) -> List[ConnectorOut]:
-    total, stocked = _counts(db, BUILTIN_SOURCE)
-    out = [ConnectorOut(
-        id=BUILTIN_SOURCE, name="PACT demo catalog", platform="Built-in",
-        description="The seeded TechHub and BookWorld catalog.", syncable=False, products=total, in_stock=stocked,
-    )]
+    out = []
     for c in all_connectors():
         total, stocked = _counts(db, c.id)
         last = (

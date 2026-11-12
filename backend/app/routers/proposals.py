@@ -70,9 +70,10 @@ def _fail(http_status: int, code: str, message: str, **extra) -> HTTPException:
 class ShoppingPromptRequest(BaseModel):
     prompt: str = Field(..., min_length=2, max_length=1000, description="Natural-language shopping request")
     mandate_id: str = Field(..., description="Spending mandate that governs this purchase")
-    source: Literal["catalog", "channel3"] = Field(
-        default="catalog",
-        description="'channel3' searches live retailers through Channel3 first; the AI then picks from those offers")
+    source: Literal["demo-store", "channel3"] = Field(
+        default="demo-store",
+        description="'channel3' searches live retailers through Channel3 first; 'demo-store' uses the fixed-price "
+                    "Demo Store connector. The AI then picks from those offers")
 
 
 class ProposeRequest(BaseModel):
@@ -164,7 +165,7 @@ def _create_and_evaluate(
         agent_name=agent_name,
         agent_request_id=agent_request_id,
     )
-    if product.source != "pact-catalog" and product.purchase_url:
+    if product.purchase_url:
         proposal.offer_source = product.source
         proposal.offer_external_id = product.external_id
         proposal.purchase_url = product.purchase_url
@@ -252,7 +253,7 @@ async def generate_proposal(request: ShoppingPromptRequest, db: Session = Depend
         if not products:
             raise _fail(404, "NO_RESULTS", "Channel3 found no retailer offers in USD for that request.")
     else:
-        products = db.query(Product).order_by(Product.id).all()
+        products = db.query(Product).filter(Product.source == "demo-store").order_by(Product.id).all()
     if not products:
         raise _fail(400, "EMPTY_CATALOG", "Catalog has no products available.")
 

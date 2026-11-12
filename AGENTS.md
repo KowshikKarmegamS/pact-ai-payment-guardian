@@ -40,7 +40,7 @@ pact-ai-payment-guardian/
 │   │   ├── models.py         # SQLAlchemy ORM models
 │   │   ├── database.py       # Database engine & session
 │   │   ├── schemas.py        # Pydantic request/response schemas
-│   │   ├── catalog.py        # Product catalog seeding
+│   │   ├── catalog.py        # Default mandate seeding (products come from connectors)
 │   │   ├── agent.py          # AI shopping assistant (Gemini)
 │   │   ├── policy.py         # Deterministic policy engine (pure)
 │   │   ├── money.py          # Decimal helpers
@@ -51,7 +51,7 @@ pact-ai-payment-guardian/
 │   │   │   ├── proposals.py
 │   │   │   ├── payments.py
 │   │   │   └── health.py
-│   │   ├── connectors/       # MerchantConnector interface + Channel3 live retailer search
+│   │   ├── connectors/       # MerchantConnector interface: Channel3 (live) + Demo Store (fixed prices)
 │   │   └── services/         # audit, mandate budgets, authorization (fingerprint/revalidation), connector sync
 │   ├── tests/                # Pytest test suite
 │   ├── requirements.txt

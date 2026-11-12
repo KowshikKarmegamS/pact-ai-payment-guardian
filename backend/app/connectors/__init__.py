@@ -4,10 +4,11 @@ from typing import Dict, List, Optional
 
 from app.connectors.base import ConnectorError, MerchantConnector, Offer
 from app.connectors.channel3 import Channel3Connector, Channel3Error
+from app.connectors.demo_store import DemoStoreConnector
 
-BUILTIN_SOURCE = "pact-catalog"
+DEMO_STORE = "demo-store"
 
-CONNECTORS: Dict[str, MerchantConnector] = {c.id: c for c in (Channel3Connector(),)}
+CONNECTORS: Dict[str, MerchantConnector] = {c.id: c for c in (Channel3Connector(), DemoStoreConnector())}
 
 
 def get_connector(connector_id: str) -> Optional[MerchantConnector]:
@@ -18,4 +19,4 @@ def all_connectors() -> List[MerchantConnector]:
     return list(CONNECTORS.values())
 
 
-__all__ = ["BUILTIN_SOURCE", "CONNECTORS", "Channel3Connector", "Channel3Error", "ConnectorError", "MerchantConnector", "Offer", "all_connectors", "get_connector"]
+__all__ = ["DEMO_STORE", "CONNECTORS", "Channel3Connector", "Channel3Error", "DemoStoreConnector", "ConnectorError", "MerchantConnector", "Offer", "all_connectors", "get_connector"]

@@ -144,7 +144,7 @@ class CatalogItem(BaseModel):
     currency: str
     in_stock: bool
     description: str
-    source: str = Field(description="'pact-catalog', 'channel3' (live retailer offer) or another connector")
+    source: str = Field(description="Connector that supplied the offer: 'channel3' (live retailer) or 'demo-store'")
     brand: Optional[str] = None
 
 

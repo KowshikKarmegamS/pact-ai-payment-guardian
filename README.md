@@ -83,7 +83,14 @@ Without a license key AG Studio shows a trial watermark; set `VITE_AG_STUDIO_LIC
 
 ## Merchant connectors
 
-Channel3 plugs in through PACT's **connector** interface: one class with `fetch_offers()` (`backend/app/connectors/`).
+PACT holds no product data of its own: **every offer comes from a connector** (one class with `fetch_offers()`,
+`backend/app/connectors/`). Two ship:
+
+- **Channel3** (default): live offers from 25,000+ retailers, re-checked before approval, order and capture.
+- **PACT Demo Store**: a fixed-price sandbox merchant (TechHub electronics, BookWorld books) so the scripted demo and the
+  tests land the same way every time. Its prices can be changed by hand (Catalog → Price) to show approvals being
+  voided; live retailer prices cannot be edited.
+
 Offers enter the catalog tagged with their source and face the same policy engine, approval fingerprint and PayPal
 flow as every other item; a connector never decides, approves or pays. **Catalog → Sync** (or
 `POST /api/connectors/channel3/sync`) refreshes a standing set of searches (`CHANNEL3_SYNC_QUERIES`); a sync that changes
@@ -339,10 +346,10 @@ Do not "fix" this by changing `PAYPAL_CURRENCY` to a different currency for the 
 
 ## Judge demo (about 3 minutes)
 
-This is the flow in the final video. A fresh database seeds two mandates (*Q1 Developer Equipment*, $750; *Engineering Books*, $250); create the demo mandate first.
+This is the flow in the final video. A fresh database seeds three mandates (*Live retailers (Channel3)*, *Q1 Developer Equipment*, *Engineering Books*) and the Demo Store's offers; create the demo mandate first.
 
 1. **Mandates → New mandate:** *Home Office Essentials*, $200 budget, merchant TechHub, category Electronics, max $100 per item, max quantity 2.
-2. **Reference agent:** "Order the NuPhy Halo75 V2 wireless keyboard for my desk." → $125, **blocked** (unit price). No approve button, no PayPal order.
+2. **Reference agent → Demo Store** (the fixed-price connector; Live retailers is the default): "Order the NuPhy Halo75 V2 wireless keyboard for my desk." → $125, **blocked** (unit price). No approve button, no PayPal order.
 3. **Reference agent:** "I need a wireless mechanical keyboard for coding, under $100." → Keychron K8 Pro, $89, 10/10 rules → **Review & authorize** → **Approve $89.00** → **Continue to PayPal Checkout** → approve as the Sandbox buyer → back in PACT the payment is recorded automatically: the server confirms the buyer's approval with PayPal, re-checks everything and captures → real capture ID, `COMPLETED`. (Approving now opens PayPal Checkout directly.)
 4. **Invalidation:** ask for one more K8 Pro and approve it, then **Catalog → change price** to $99.50. The approval becomes **Approval expired** with the change listed.
 5. **Any agent:** **Agents → Connect an agent**, grant the mandate, then run `integrations/mcp/example_agent.py` with the key (see above). Over-limit requests are refused; in-policy ones wait on the Agents page.
@@ -359,7 +366,7 @@ cd backend && pytest -v
 cd frontend && npm ci && npm run build
 ```
 
-181 backend tests (2026-11-12: `181 passed`) cover the policy engine as pure unit tests (every rule, quantity boundaries, Decimal precision, currency), AI output validation, Gemini HTTP errors/quota/timeouts/safety blocks against a stubbed endpoint (malformed JSON, wrong types, unknown product IDs, out-of-range quantities, injected fields, fallback reasons), a fully prompt-injected AI being blocked, the full payment lifecycle against an in-memory PayPal fake (capture before buyer approval, order amount/currency/reference mismatches, missing capture ID, PENDING and DECLINED captures, amount mismatch, timeouts with idempotent retry and reconciliation, concurrent capture lock, duplicate capture), approval invalidation (mandate edits, pausing, catalog price drift, tampered rows), cancellation and reopen, audit redaction, Sandbox-only enforcement, the Agent Gateway (scoped keys, revocation, no approve/capture route, idempotent requests), the MCP server, the Gemini backup model on 429/503, owner sign-in (protected routes, HttpOnly cookie, forged/expired tokens, throttling, fail-closed when required but unset), Channel3 (normalization, key only in the header, upstream errors, mandate enforcement, offer bound into the fingerprint, price/stock/listing drift voiding approvals, fail-closed re-checks, rotating tracking ids, capture then retailer handoff, agents never seeing buy links), and the AG Studio dataset and agent proxy (paid counts only verified captures; Studio items to Gemini function calling and back; key stays server-side). Tests never touch `pact.db`, Gemini, OpenAI or PayPal.
+186 backend tests (2026-11-12: `186 passed`) cover the policy engine as pure unit tests (every rule, quantity boundaries, Decimal precision, currency), AI output validation, Gemini HTTP errors/quota/timeouts/safety blocks against a stubbed endpoint (malformed JSON, wrong types, unknown product IDs, out-of-range quantities, injected fields, fallback reasons), a fully prompt-injected AI being blocked, the full payment lifecycle against an in-memory PayPal fake (capture before buyer approval, order amount/currency/reference mismatches, missing capture ID, PENDING and DECLINED captures, amount mismatch, timeouts with idempotent retry and reconciliation, concurrent capture lock, duplicate capture), approval invalidation (mandate edits, pausing, catalog price drift, tampered rows), cancellation and reopen, audit redaction, Sandbox-only enforcement, the Agent Gateway (scoped keys, revocation, no approve/capture route, idempotent requests), the MCP server, the Gemini backup model on 429/503, owner sign-in (protected routes, HttpOnly cookie, forged/expired tokens, throttling, fail-closed when required but unset), Channel3 (normalization, key only in the header, upstream errors, mandate enforcement, offer bound into the fingerprint, price/stock/listing drift voiding approvals, fail-closed re-checks, rotating tracking ids, capture then retailer handoff, agents never seeing buy links), and the AG Studio dataset and agent proxy (paid counts only verified captures; Studio items to Gemini function calling and back; key stays server-side). Tests never touch `pact.db`, Gemini, OpenAI or PayPal.
 
 ## Deployment (Render)
 
@@ -373,13 +380,11 @@ The blueprint sets `REQUIRE_OWNER_AUTH=true`, so a deployment **fails closed**: 
 
 Status: **deployed** at https://pact-ai-payment-guardian.onrender.com (verified 2026-11-11: `/api/health` 200; `/api/status?check_paypal=true` reports Sandbox OAuth OK and Gemini configured; owner routes return 401 until sign-in; the Agent Gateway returns 401 without a key). The Control Center needs the owner password, which is not published. Data resets whenever the free instance restarts or sleeps.
 
-**Channel3 refresh script.** `scripts/channel3_sync.py` (stdlib only) signs in with `POST /api/owner/login`, then calls `POST /api/connectors/channel3/sync` with the session cookie and prints the sync counts. It only refreshes offers. The server re-verifies open proposals, and the script never approves or pays. It exits non-zero on 401, 503 `CONNECTOR_NOT_CONFIGURED` or 502 `CONNECTOR_UNAVAILABLE` and logs only the status and error code. Run it with `PACT_BASE_URL=https://… OWNER_PASSWORD=… python scripts/channel3_sync.py`. It is not scheduled on Render: Render cron jobs have no free plan (at least $1/month), so the deployment stays free. Any free scheduler that can keep `OWNER_PASSWORD` secret can run it.
-
 ## Known limitations
 
 - Owner sign-in is a single shared password (`OWNER_PASSWORD`) with a signed session cookie and in-memory login throttling: suitable for a demo or a single owner, not a multi-user product (no accounts, no 2FA, no per-user mandates). With no password set, the Control Center is open to anyone who can reach it; that mode is for local demos only. Agents always authenticate with their own scoped keys.
 - SQLite with a single instance. The capture lock is an atomic row update, which is correct for one process and one database; multiple instances would need Postgres.
-- Catalog sources: seeded demo data and live Channel3 offers. Connectors read offers only. The retailer handoff opens the retailer's own checkout; PACT does not place or pay retailer orders (PayPal Sandbox money does not reach the retailer).
+- Every product comes from a connector: live Channel3 offers, or the fixed-price Demo Store. Connectors read offers only. The retailer handoff opens the retailer's own checkout; PACT does not place or pay retailer orders (PayPal Sandbox money does not reach the retailer).
 - AG Studio is commercial: without `VITE_AG_STUDIO_LICENSE_KEY` it shows a trial watermark. Its agents need Gemini quota; free-tier limits can stop a run.
 - Orders use `PAYPAL_CURRENCY` only; there is no multi-currency support by design.
 - The fingerprint proves the approved values did not change inside PACT; it is not a signature by the user's device.
