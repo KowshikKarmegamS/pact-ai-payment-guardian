@@ -2,9 +2,9 @@
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models import ProposalStatus
 
@@ -110,6 +110,13 @@ class MandateBase(BaseModel):
         description="max_price_per_item, min_price_per_item, max_quantity, prohibited_keywords, prohibited_merchants",
     )
     expires_at: Optional[datetime] = Field(default=None, description="After this instant every purchase is blocked")
+    authorization_mode: Literal["approval_required", "auto_approve_within_limits"] = Field(
+        default="approval_required",
+        description="'approval_required': the owner approves every purchase. 'auto_approve_within_limits': purchases "
+                    "that pass every rule and cost at most max_auto_approve_amount are authorized without asking.")
+    max_auto_approve_amount: Optional[Decimal] = Field(
+        default=None, gt=0, le=Decimal("100000"), decimal_places=2,
+        description="Largest purchase total PACT may authorize on its own. Required for auto mode.")
 
 
 class MandateCreate(MandateBase):
@@ -128,6 +135,19 @@ class MandateCreate(MandateBase):
     def validate_restrictions(cls, value: Any) -> Dict[str, Any]:
         return _normalize_restrictions(value)
 
+    @model_validator(mode="after")
+    def _auto_terms(self) -> "MandateCreate":
+        check_auto_terms(self.authorization_mode, self.max_auto_approve_amount, self.max_budget)
+        return self
+
+
+def check_auto_terms(mode: Optional[str], limit: Optional[Decimal], budget: Optional[Decimal]) -> None:
+    if mode == "auto_approve_within_limits":
+        if limit is None:
+            raise ValueError("Auto-authorization needs max_auto_approve_amount.")
+        if budget is not None and limit > budget:
+            raise ValueError("max_auto_approve_amount cannot exceed the mandate budget.")
+
 
 class MandateUpdate(BaseModel):
     """Schema for updating an existing spending mandate."""
@@ -139,6 +159,8 @@ class MandateUpdate(BaseModel):
     restrictions: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
     expires_at: Optional[datetime] = Field(default=None, description="Send null to remove the expiry")
+    authorization_mode: Optional[Literal["approval_required", "auto_approve_within_limits"]] = None
+    max_auto_approve_amount: Optional[Decimal] = Field(default=None, gt=0, le=Decimal("100000"), decimal_places=2)
 
     @field_validator("allowed_merchants", "allowed_categories")
     @classmethod
@@ -241,6 +263,10 @@ class ProposalOut(BaseModel):
     offer_external_id: Optional[str] = None
     purchase_url: Optional[str] = None
     retailer_handoff_at: Optional[datetime] = None
+    authorization_decision: Optional[str] = None
+    decision_reason: Optional[str] = None
+    authorized_by: Optional[str] = None
+    budget_reserved_at: Optional[datetime] = None
     alternatives: Optional[List[Dict[str, Any]]] = None
     policy_checks: Optional[List[Dict[str, Any]]] = None
     remaining_budget_at_decision: Optional[Decimal] = None

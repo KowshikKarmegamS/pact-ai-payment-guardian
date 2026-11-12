@@ -44,8 +44,10 @@ export interface AnalyticsPurchaseRow {
   outcome: string;
   status: string;
   decided_by_policy: string;
+  authorization: string;
   requested_amount: number;
   paid_amount: number;
+  authorized_amount: number;
   blocked_amount: number;
   quantity: number;
   currency: string;
@@ -101,6 +103,8 @@ export interface Mandate {
   is_active: boolean;
   expires_at: string | null;
   revoked_at: string | null;
+  authorization_mode: AuthorizationMode;
+  max_auto_approve_amount: DecimalString | null;
   status: MandateStatus;
   created_at: string;
   updated_at: string;
@@ -117,11 +121,17 @@ export interface MandateInput {
   restrictions?: MandateRestrictions;
   is_active?: boolean;
   expires_at?: string | null;
+  authorization_mode?: AuthorizationMode;
+  max_auto_approve_amount?: string | null;
 }
+
+export type AuthorizationMode = 'approval_required' | 'auto_approve_within_limits';
+export type AuthorizationDecision = 'AUTO_APPROVE' | 'REQUIRES_APPROVAL' | 'BLOCKED';
 
 export type ProposalStatus =
   | 'AWAITING_HUMAN_APPROVAL'
   | 'HUMAN_APPROVED'
+  | 'AUTO_AUTHORIZED'
   | 'AWAITING_PAYPAL_BUYER_APPROVAL'
   | 'PAYPAL_BUYER_APPROVED'
   | 'CAPTURE_PENDING'
@@ -185,6 +195,10 @@ export interface Proposal {
   offer_external_id?: string | null;
   purchase_url?: string | null;
   retailer_handoff_at?: string | null;
+  authorization_decision?: AuthorizationDecision | null;
+  decision_reason?: string | null;
+  authorized_by?: 'mandate' | 'owner' | null;
+  budget_reserved_at?: string | null;
   alternatives?: Alternative[] | null;
   policy_checks?: PolicyCheck[] | null;
   remaining_budget_at_decision?: DecimalString | null;

@@ -66,9 +66,11 @@ TOOLS = [
     },
     {
         "name": "request_purchase",
-        "description": "Ask the human to approve a purchase. PACT evaluates it against the mandate; if it is within "
-                       "policy it waits for the human's explicit approval in the PACT Control Center. This does NOT "
-                       "pay. Give the user the approval link from the result.",
+        "description": "Request a purchase. PACT's deterministic policy engine decides: AUTO_APPROVE (within the "
+                       "owner's auto-authorization limit), REQUIRES_APPROVAL (waits for the owner in the PACT Control "
+                       "Center) or BLOCKED (explain the reason; do not retry). Authorization is NOT payment: "
+                       "payment_status stays NOT_STARTED until the owner completes PayPal Checkout. Give the user the "
+                       "approval link from the result.",
         "inputSchema": {"type": "object", "properties": {
             "mandate_id": {"type": "string"}, "product_id": {"type": "integer"},
             "quantity": {"type": "integer", "minimum": 1, "maximum": 20},

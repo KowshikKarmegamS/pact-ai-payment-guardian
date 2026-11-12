@@ -49,6 +49,9 @@ class ProposalStatus(str, enum.Enum):
 
     AWAITING_HUMAN_APPROVAL = "AWAITING_HUMAN_APPROVAL"
     HUMAN_APPROVED = "HUMAN_APPROVED"
+    # Authorized by the deterministic policy engine under the owner's auto-authorization limit.
+    # Same lifecycle as HUMAN_APPROVED from here on: PayPal buyer approval is still required.
+    AUTO_AUTHORIZED = "AUTO_AUTHORIZED"
     AWAITING_PAYPAL_BUYER_APPROVAL = "AWAITING_PAYPAL_BUYER_APPROVAL"
     PAYPAL_BUYER_APPROVED = "PAYPAL_BUYER_APPROVED"
     CAPTURE_PENDING = "CAPTURE_PENDING"
@@ -64,6 +67,7 @@ class ProposalStatus(str, enum.Enum):
 # Proposals in these states hold a claim on the mandate budget.
 COMMITTED_STATUSES = (
     ProposalStatus.HUMAN_APPROVED,
+    ProposalStatus.AUTO_AUTHORIZED,
     ProposalStatus.AWAITING_PAYPAL_BUYER_APPROVAL,
     ProposalStatus.PAYPAL_BUYER_APPROVED,
     ProposalStatus.CAPTURE_PENDING,
@@ -73,6 +77,7 @@ SPENT_STATUSES = (ProposalStatus.CAPTURED,)
 # States in which a valid human approval is still in force.
 APPROVED_STATUSES = (
     ProposalStatus.HUMAN_APPROVED,
+    ProposalStatus.AUTO_AUTHORIZED,
     ProposalStatus.AWAITING_PAYPAL_BUYER_APPROVAL,
     ProposalStatus.PAYPAL_BUYER_APPROVED,
     ProposalStatus.PAYPAL_CANCELLED,
@@ -117,6 +122,11 @@ class Mandate(Base):
     is_active = Column(Boolean, nullable=False, default=True)
     expires_at = Column(DateTime(timezone=True), nullable=True)
     revoked_at = Column(DateTime(timezone=True), nullable=True)
+    # "approval_required" (default: the owner approves every purchase) or "auto_approve_within_limits".
+    authorization_mode = Column(String(40), nullable=False, default="approval_required")
+    max_auto_approve_amount = Column(Numeric(10, 2, asdecimal=True), nullable=True)
+    # Bumped under lock whenever a purchase reserves budget, so concurrent authorizations serialize.
+    budget_version = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), nullable=False, default=utc_now)
     updated_at = Column(
         DateTime(timezone=True),
@@ -173,6 +183,12 @@ class Proposal(Base):
     offer_external_id = Column(String(120), nullable=True)
     purchase_url = Column(String(1000), nullable=True)
     retailer_handoff_at = Column(DateTime(timezone=True), nullable=True)
+
+    # --- PACT authorization decision (separate from PayPal payment state) ---
+    authorization_decision = Column(String(30), nullable=True)  # AUTO_APPROVE | REQUIRES_APPROVAL | BLOCKED
+    decision_reason = Column(Text, nullable=True)
+    authorized_by = Column(String(20), nullable=True)  # "mandate" (auto) or "owner"
+    budget_reserved_at = Column(DateTime(timezone=True), nullable=True)
 
     # --- Deterministic policy decision ---
     policy_checks = Column(JSON, nullable=True)

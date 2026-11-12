@@ -30,6 +30,19 @@ story order with live Gemini recommendations and a real PayPal Sandbox payment. 
 | 2:34 | Architecture card: any agent, any store, one gateway | Any platform plugs in with one connector that returns offers. The policy engine, the fingerprint and the PayPal flow never change. |
 | 2:42 | Closing card | Agents request. The policy engine authorizes. A human approves. PayPal executes. PACT. The payment authorization gateway for AI agents. |
 
+## Auto-authorization: three outcomes (about 2 minutes)
+
+1. **Mandates → New mandate**: *Desk gear*, $300 budget, TechHub, Electronics, max $150 per item, max quantity 2,
+   prohibited keyword `headphones`, tick **Auto-authorize purchases within limits**, up to **$100**.
+2. **Agents → Connect an agent** for that mandate, then from the agent (MCP `request_purchase` or
+   `POST /api/agent/v1/purchases`):
+   - Keychron K8 Pro, $89 → `AUTO_AUTHORIZED`, decision `AUTHORIZED`, `payment_status: NOT_STARTED`. The purchase page
+     says "Auto-authorized by your mandate. Payment not started." → **Continue to PayPal Checkout** → the buyer approves →
+     PACT captures automatically.
+   - NuPhy Halo75 V2, $125 → `REQUIRES_APPROVAL`: "above your $100.00 auto-authorization limit". Approve or reject it.
+   - Sony WH-1000XM5 headphones, $299.99 → `BLOCKED`: price limit, prohibited keyword and budget. No approve button.
+3. **Analytics**: "How each request was decided" shows auto-authorized, owner-approved and blocked side by side.
+
 ## Live demo (same story, about 3 minutes)
 
 Before you start:

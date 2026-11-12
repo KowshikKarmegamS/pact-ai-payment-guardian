@@ -105,11 +105,42 @@ same policy engine, approval fingerprint and PayPal flow as every other item; a 
 | 1. Mandate | User | Sets a budget, allowed merchants and categories, max unit price, max quantity, prohibited keywords and blocked merchants. |
 | 2. Request | Any AI agent (external via API/MCP, or the built-in Gemini reference agent) | Asks for **one product ID and a quantity** from the catalog. That is all it can do. |
 | 3. Authorize | Deterministic policy engine | Prices the item from the catalog (Decimal), evaluates 8–12 rules, persists each result. Blocked proposals stop here. |
-| 4. Approve | Human | Approves the exact proposal. The approval is bound to a SHA-256 fingerprint of the purchase and the mandate rules. |
+| 4. Approve | Owner, or the mandate itself | **Auto-authorized** if every rule passed and the mandate allows auto-authorization up to an amount the purchase stays within; otherwise the owner approves the exact proposal. Either way the authorization is bound to a SHA-256 fingerprint of the purchase and the mandate rules. |
 | 5. Checkout | PayPal Orders v2 | Server re-checks the fingerprint and policy, creates an order for exactly that amount, and the buyer approves in PayPal Checkout. |
 | 6. Capture | Human → server → PayPal | The server asks PayPal whether the buyer approved, re-checks everything again, captures with an idempotency key, and verifies the capture ID, status, amount and currency. |
 
 Every step is written to an append-only, redacted audit log, and every proposal has an **Authorization Receipt** explaining why it was permitted or blocked.
+
+## Auto-authorization: set your rules once, get interrupted only when money is at risk
+
+Each mandate has an `authorization_mode`. The default, `approval_required`, keeps the original behaviour: the owner
+approves every purchase. Existing mandates keep it; auto-authorization is only ever switched on explicitly by the owner
+(**Mandates → Auto-authorize purchases within limits**, or `authorization_mode: "auto_approve_within_limits"` with
+`max_auto_approve_amount`, which must be positive and no more than the budget).
+
+PACT's deterministic engine then returns exactly one of three decisions (`backend/app/services/auto_authorization.py`):
+
+| Decision | When | What happens |
+|---|---|---|
+| `AUTO_APPROVE` | Every policy rule passes, the mandate is in auto mode, and the total is within `max_auto_approve_amount` | Status `AUTO_AUTHORIZED`; budget is reserved at once; ready for PayPal Checkout. No PACT approval click. |
+| `REQUIRES_APPROVAL` | Every rule passes, but the mandate requires approval for everything, or the total is above the auto limit | Status `AWAITING_HUMAN_APPROVAL` with the precise reason; the owner approves or rejects the exact purchase. |
+| `BLOCKED` | Any rule fails: prohibited merchant or keyword, merchant or category not allowed, price/quantity/budget limit, expired, paused or revoked mandate, currency or integrity mismatch | Status `POLICY_REJECTED`; never paid; no approval can override it. Revoked or invalid agent keys never reach the engine (401). |
+
+**Authorization is not payment.** An auto-authorized purchase still goes through PayPal Orders v2 Checkout: PayPal requires
+the buyer's approval, PACT verifies that approval with PayPal server-side, re-checks the fingerprint, the live offer and
+every rule, then captures (automatically, as soon as PayPal confirms). PACT does not use PayPal vaulting or any unattended
+payment method, so there is no capture without the buyer's approval of that order. Agents receive the decision, its
+reason and a separate `payment_status` (`NOT_STARTED`, `IN_CHECKOUT`, `PENDING`, `COMPLETED`, `FAILED`, `CANCELLED`).
+
+**Budget reservation.** Approved and auto-authorized purchases (and captures whose outcome PayPal has not confirmed yet)
+hold their amount against the mandate; rejected, voided, cancelled and definitively failed purchases release it. Every
+decision that reserves budget first takes a per-mandate lock (`lock_mandate_budget`: a write to the mandate row as the
+first statement of the transaction; a database write lock on SQLite, a row lock on Postgres), so two agents asking at
+the same moment cannot both be authorized against the same remaining budget. Tests race 8 concurrent requests and 2
+concurrent approvals, and the approval race fails when the lock is removed.
+
+**Fingerprint.** An auto-authorized purchase's fingerprint also covers the auto-authorization terms it was authorized
+under, so lowering the limit or switching auto off voids purchases that no longer qualify.
 
 ## What makes it different
 
@@ -339,7 +370,7 @@ cd backend && pytest -v
 cd frontend && npm ci && npm run build
 ```
 
-172 backend tests (2026-11-12: `172 passed`) cover the policy engine as pure unit tests (every rule, quantity boundaries, Decimal precision, currency), AI output validation for both providers, Gemini HTTP errors/quota/timeouts/safety blocks against a stubbed endpoint (malformed JSON, wrong types, unknown product IDs, out-of-range quantities, injected fields, fallback reasons), a fully prompt-injected AI being blocked, the full payment lifecycle against an in-memory PayPal fake (capture before buyer approval, order amount/currency/reference mismatches, missing capture ID, PENDING and DECLINED captures, amount mismatch, timeouts with idempotent retry and reconciliation, concurrent capture lock, duplicate capture), approval invalidation (mandate edits, pausing, catalog price drift, tampered rows), cancellation and reopen, audit redaction, Sandbox-only enforcement, the Agent Gateway (scoped keys, revocation, no approve/capture route, idempotent requests), the MCP server, the Gemini backup model on 429/503, owner sign-in (protected routes, HttpOnly cookie, forged/expired tokens, throttling, fail-closed when required but unset), merchant connectors (Shopify feed parsing, sync, price drift and delisting voiding approvals, unlisted merchants blocked, foreign currency and unreadable feeds), Channel3 (normalization, key only in the header, upstream errors, mandate enforcement, offer bound into the fingerprint, price/stock/listing drift voiding approvals, fail-closed re-checks, rotating tracking ids, capture then retailer handoff, agents never seeing buy links), and the AG Studio dataset and agent proxy (paid counts only verified captures; Studio items to Gemini function calling and back; key stays server-side). Tests never touch `pact.db`, Gemini, OpenAI or PayPal.
+188 backend tests (2026-11-12: `188 passed`) cover the policy engine as pure unit tests (every rule, quantity boundaries, Decimal precision, currency), AI output validation for both providers, Gemini HTTP errors/quota/timeouts/safety blocks against a stubbed endpoint (malformed JSON, wrong types, unknown product IDs, out-of-range quantities, injected fields, fallback reasons), a fully prompt-injected AI being blocked, the full payment lifecycle against an in-memory PayPal fake (capture before buyer approval, order amount/currency/reference mismatches, missing capture ID, PENDING and DECLINED captures, amount mismatch, timeouts with idempotent retry and reconciliation, concurrent capture lock, duplicate capture), approval invalidation (mandate edits, pausing, catalog price drift, tampered rows), cancellation and reopen, audit redaction, Sandbox-only enforcement, the Agent Gateway (scoped keys, revocation, no approve/capture route, idempotent requests), the MCP server, the Gemini backup model on 429/503, owner sign-in (protected routes, HttpOnly cookie, forged/expired tokens, throttling, fail-closed when required but unset), merchant connectors (Shopify feed parsing, sync, price drift and delisting voiding approvals, unlisted merchants blocked, foreign currency and unreadable feeds), Channel3 (normalization, key only in the header, upstream errors, mandate enforcement, offer bound into the fingerprint, price/stock/listing drift voiding approvals, fail-closed re-checks, rotating tracking ids, capture then retailer handoff, agents never seeing buy links), and the AG Studio dataset and agent proxy (paid counts only verified captures; Studio items to Gemini function calling and back; key stays server-side). Tests never touch `pact.db`, Gemini, OpenAI or PayPal.
 
 ## Deployment (Render)
 

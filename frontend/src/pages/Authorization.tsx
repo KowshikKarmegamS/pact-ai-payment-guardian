@@ -161,7 +161,9 @@ function verdict(p: Proposal, failedCount: number, total: number): { tone: Tone;
     case 'POLICY_REJECTED':
       return { tone: 'bad', icon: <ShieldAlert className="h-5 w-5" />, title: `Blocked by the policy engine: ${failedCount} of ${total} rules violated`, text: 'This transaction cannot proceed. It cannot be approved and no PayPal order can be created for it.' };
     case 'AWAITING_HUMAN_APPROVAL':
-      return { tone: 'warn', icon: <Clock className="h-5 w-5" />, title: `Policy check passed (${total}/${total}). Your authorization is required.`, text: 'Passing policy does not authorize a payment. Nothing happens until you explicitly approve.' };
+      return { tone: 'warn', icon: <Clock className="h-5 w-5" />, title: `Policy check passed (${total}/${total}). Your authorization is required.`, text: p.decision_reason ?? 'Passing policy does not authorize a payment. Nothing happens until you explicitly approve.' };
+    case 'AUTO_AUTHORIZED':
+      return { tone: 'accent', icon: <BadgeCheck className="h-5 w-5" />, title: 'Auto-authorized by your mandate. Payment not started.', text: `${p.decision_reason ?? ''} Nothing is paid until the buyer approves in PayPal Checkout; PACT then re-checks everything and captures.` };
     case 'HUMAN_APPROVED':
       return { tone: 'accent', icon: <BadgeCheck className="h-5 w-5" />, title: 'You authorized this purchase. Ready for PayPal Checkout.', text: 'The server re-checks your approval and every rule before it creates the PayPal order.' };
     case 'AWAITING_PAYPAL_BUYER_APPROVAL':
@@ -331,7 +333,7 @@ export const Authorization: React.FC = () => {
   const buyerOk = ['PAYPAL_BUYER_APPROVED', 'CAPTURE_PENDING', 'CAPTURED'].includes(p.status);
   const showJourney = !!p.approved_at && !blocked;
   const approvalValid = receipt.integrity.intact && p.status !== 'APPROVAL_EXPIRED';
-  const canReject = ['AWAITING_HUMAN_APPROVAL', 'HUMAN_APPROVED', 'AWAITING_PAYPAL_BUYER_APPROVAL', 'PAYPAL_BUYER_APPROVED', 'PAYPAL_CANCELLED'].includes(p.status);
+  const canReject = ['AWAITING_HUMAN_APPROVAL', 'HUMAN_APPROVED', 'AUTO_AUTHORIZED', 'AWAITING_PAYPAL_BUYER_APPROVAL', 'PAYPAL_BUYER_APPROVED', 'PAYPAL_CANCELLED'].includes(p.status);
 
   const approve = () =>
     run('approve', async () => {
@@ -548,7 +550,7 @@ export const Authorization: React.FC = () => {
                     <p className="mt-0.5">
                       SHA-256 of the product, merchant, price, quantity, currency, mandate rules{p.purchase_url ? ', retailer offer and buy link' : ''}{p.agent_name ? ' and requesting agent' : ''}.{' '}
                       {p.approved_at ? (
-                        <>Approved {dateTime(p.approved_at)}. <span className={approvalValid ? 'text-ok' : 'text-caution'}>{approvalValid ? 'Still intact.' : 'Void: it no longer matches.'}</span></>
+                        <>{p.authorized_by === 'mandate' ? 'Auto-authorized by your mandate' : 'Approved'} {dateTime(p.approved_at)}. <span className={approvalValid ? 'text-ok' : 'text-caution'}>{approvalValid ? 'Still intact.' : 'Void: it no longer matches.'}</span></>
                       ) : (
                         'Your approval is bound to it; if anything changes, it is void.'
                       )}
@@ -572,8 +574,8 @@ export const Authorization: React.FC = () => {
 
                 {showJourney && (
                   <ol>
-                    <Step state="done" title="Approved by you">{dateTime(p.approved_at)}</Step>
-                    <Step state={hasOrder ? 'done' : p.status === 'HUMAN_APPROVED' ? 'current' : p.status === 'APPROVAL_EXPIRED' ? 'failed' : 'todo'} title="PayPal order created">
+                    <Step state="done" title={p.authorized_by === 'mandate' ? 'Auto-authorized by your mandate' : 'Approved by you'}>{dateTime(p.approved_at)}</Step>
+                    <Step state={hasOrder ? 'done' : p.status === 'HUMAN_APPROVED' || p.status === 'AUTO_AUTHORIZED' ? 'current' : p.status === 'APPROVAL_EXPIRED' ? 'failed' : 'todo'} title="PayPal order created">
                       {hasOrder ? <Mono className="text-[11px] text-muted">{p.paypal_order_id}</Mono> : 'For exactly the approved amount'}
                     </Step>
                     <Step state={buyerOk ? 'done' : p.status === 'AWAITING_PAYPAL_BUYER_APPROVAL' ? 'current' : p.status === 'PAYPAL_CANCELLED' || (p.status === 'APPROVAL_EXPIRED' && hasOrder) ? 'failed' : 'todo'} title="Buyer approves in PayPal Checkout">
@@ -585,7 +587,7 @@ export const Authorization: React.FC = () => {
                   </ol>
                 )}
 
-                {(p.status === 'HUMAN_APPROVED' || p.status === 'PAYPAL_CANCELLED') && (
+                {(p.status === 'HUMAN_APPROVED' || p.status === 'AUTO_AUTHORIZED' || p.status === 'PAYPAL_CANCELLED') && (
                   <Button variant="paypal" size="lg" className="w-full" onClick={() => void checkout()} loading={busy === 'checkout'} disabled={!!busy} icon={<ExternalLink className="h-4 w-4" />}>
                     {p.status === 'PAYPAL_CANCELLED' ? 'Reopen PayPal Checkout' : 'Continue to PayPal Checkout'}
                   </Button>

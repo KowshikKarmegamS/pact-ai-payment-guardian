@@ -86,6 +86,11 @@ def canonical_snapshot(proposal: Proposal, mandate: Mandate) -> Dict[str, Any]:
     # so fingerprints of earlier proposals are unchanged.
     if getattr(proposal, "agent_id", None):
         snap["requested_by"] = {"agent_id": proposal.agent_id, "agent_name": proposal.agent_name}
+    # A purchase authorized automatically is bound to the auto-authorization terms it was authorized under.
+    if getattr(proposal, "authorized_by", None) == "mandate":
+        limit = getattr(mandate, "max_auto_approve_amount", None)
+        snap["auto_authorization"] = {"mode": getattr(mandate, "authorization_mode", None),
+                                      "max_auto_approve_amount": _money(limit) if limit is not None else None}
     # The exact external offer (retailer listing and buy link) is part of what the human approves.
     # Added only for connector offers, so fingerprints of catalog proposals are unchanged.
     if getattr(proposal, "offer_source", None) and getattr(proposal, "purchase_url", None):
@@ -126,7 +131,7 @@ def describe_changes(before: Optional[Dict[str, Any]], after: Dict[str, Any]) ->
     if not before:
         return ["No approved snapshot is on record for this proposal."]
     changes: List[str] = []
-    for section in ("proposal", "mandate", "requested_by", "offer"):
+    for section in ("proposal", "mandate", "requested_by", "offer", "auto_authorization"):
         b, a = before.get(section) or {}, after.get(section) or {}
         for key in sorted(set(b) | set(a)):
             if b.get(key) != a.get(key):

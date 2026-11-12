@@ -65,6 +65,8 @@ def build_mandate_out(db: Session, mandate: Mandate) -> MandateOut:
         allowed_merchants=mandate.allowed_merchants or [],
         allowed_categories=mandate.allowed_categories or [],
         restrictions=mandate.restrictions or {},
+        authorization_mode=mandate.authorization_mode or "approval_required",
+        max_auto_approve_amount=q(mandate.max_auto_approve_amount) if mandate.max_auto_approve_amount is not None else None,
         is_active=mandate.is_active,
         expires_at=as_utc(mandate.expires_at),
         revoked_at=as_utc(mandate.revoked_at),

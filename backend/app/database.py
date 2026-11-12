@@ -15,6 +15,8 @@ settings = get_settings()
 connect_args = {}
 if settings.DATABASE_URL.startswith("sqlite"):
     connect_args["check_same_thread"] = False
+    # Concurrent authorizations wait for the mandate budget lock instead of failing at once.
+    connect_args["timeout"] = 30
     # Ensure the directory for a file-based SQLite DB exists (e.g. a mounted disk).
     db_path = settings.DATABASE_URL.replace("sqlite:///", "", 1)
     if db_path and db_path != ":memory:":
@@ -41,6 +43,13 @@ def get_db() -> Generator[Session, None, None]:
 
 # Columns added after the first release. (table, column, SQL type + default)
 _ADDITIVE_COLUMNS = [
+    ("mandates", "authorization_mode", "VARCHAR(40) NOT NULL DEFAULT 'approval_required'"),
+    ("mandates", "max_auto_approve_amount", "NUMERIC(10, 2)"),
+    ("mandates", "budget_version", "INTEGER NOT NULL DEFAULT 0"),
+    ("proposals", "authorization_decision", "VARCHAR(30)"),
+    ("proposals", "decision_reason", "TEXT"),
+    ("proposals", "authorized_by", "VARCHAR(20)"),
+    ("proposals", "budget_reserved_at", "DATETIME"),
     ("products", "source", "VARCHAR(40) NOT NULL DEFAULT 'pact-catalog'"),
     ("products", "external_id", "VARCHAR(120)"),
     ("products", "brand", "VARCHAR(120)"),

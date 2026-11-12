@@ -38,6 +38,7 @@ from app.schemas import ProposalOut
 from app.connectors import ConnectorError
 from app.services.audit import log_audit_event
 from app.services.connector_sync import reverify_live_offer
+from app.services.auto_authorization import lock_mandate_budget
 from app.services.authorization import expire_approval, verify_authorization
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
@@ -49,6 +50,7 @@ CAPTURABLE_STATUSES = (
 )
 ORDERABLE_STATUSES = (
     ProposalStatus.HUMAN_APPROVED,
+    ProposalStatus.AUTO_AUTHORIZED,
     ProposalStatus.AWAITING_PAYPAL_BUYER_APPROVAL,
     ProposalStatus.PAYPAL_CANCELLED,
 )
@@ -146,6 +148,8 @@ async def create_paypal_payment_order(proposal_id: str, db: Session = Depends(ge
         )
 
     await _reverify_offer(db, proposal, product, "PayPal order creation")
+    lock_mandate_budget(db, mandate)  # reopening a cancelled checkout re-reserves budget
+    db.refresh(proposal)
     integrity = verify_authorization(db, proposal, mandate, product, require_approval=True)
     if not integrity.ok:
         raise _invalidated(expire_approval(db, proposal, "PayPal order creation", integrity), proposal)
@@ -413,6 +417,7 @@ async def capture_paypal_payment(proposal_id: str, db: Session = Depends(get_db)
         hints = {
             ProposalStatus.AWAITING_HUMAN_APPROVAL: "The proposal has not been approved by a human.",
             ProposalStatus.HUMAN_APPROVED: "No PayPal order exists yet. Start PayPal checkout first.",
+            ProposalStatus.AUTO_AUTHORIZED: "Auto-authorized by your mandate; no PayPal order exists yet. Start PayPal checkout first.",
             ProposalStatus.PAYPAL_CANCELLED: "PayPal checkout was cancelled. Reopen checkout first.",
             ProposalStatus.POLICY_REJECTED: "The policy engine blocked this proposal.",
         }

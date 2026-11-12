@@ -39,6 +39,7 @@ from app.schemas import (
 from app.connectors import ConnectorError
 from app.services.audit import log_audit_event
 from app.services.connector_sync import reverify_live_offer, search_and_import
+from app.services.auto_authorization import AUTO_APPROVE, REQUIRES_APPROVAL, decide, lock_mandate_budget, reservation_ref
 from app.services.authorization import (
     canonical_snapshot,
     describe_changes,
@@ -54,6 +55,7 @@ router = APIRouter(prefix="/proposals", tags=["Proposals"])
 REJECTABLE_STATUSES = (
     ProposalStatus.AWAITING_HUMAN_APPROVAL,
     ProposalStatus.HUMAN_APPROVED,
+    ProposalStatus.AUTO_AUTHORIZED,
     ProposalStatus.AWAITING_PAYPAL_BUYER_APPROVAL,
     ProposalStatus.PAYPAL_BUYER_APPROVED,
     ProposalStatus.PAYPAL_CANCELLED,
@@ -136,8 +138,9 @@ def _create_and_evaluate(
     agent_name: Optional[str] = None,
     agent_request_id: Optional[str] = None,
 ) -> tuple:
-    """Price the item from the catalog, run the policy engine, persist the decision."""
+    """Price the item from the catalog, run the policy engine, decide, and reserve budget atomically."""
     settings = get_settings()
+    lock_mandate_budget(db, mandate)
     unit_price = q(product.price)
     total = q(unit_price * Decimal(quantity))
 
@@ -173,6 +176,11 @@ def _create_and_evaluate(
         mandate=mandate, proposal=proposal, product=product,
         remaining_budget=remaining, expected_currency=settings.currency,
     )
+    decision, reason = decide(mandate, policy, total, settings.currency)
+    proposal.authorization_decision = decision
+    proposal.decision_reason = reason
+    if decision == AUTO_APPROVE:
+        proposal.authorized_by = "mandate"
     snapshot = canonical_snapshot(proposal, mandate)
     proposal.policy_checks = checks_to_json(policy)
     if catalog is not None:
@@ -180,9 +188,20 @@ def _create_and_evaluate(
     proposal.remaining_budget_at_decision = remaining
     proposal.approval_snapshot = snapshot
     proposal.proposal_fingerprint = fingerprint_of(snapshot)
-    proposal.status = ProposalStatus.AWAITING_HUMAN_APPROVAL if policy.passed else ProposalStatus.POLICY_REJECTED
-    proposal.status_reason = None if policy.passed else "Blocked by policy: " + " ".join(policy.violations)
-    db.commit()
+    if decision == AUTO_APPROVE:
+        now = utc_now()
+        proposal.status = ProposalStatus.AUTO_AUTHORIZED
+        proposal.approval_fingerprint = proposal.proposal_fingerprint
+        proposal.approved_at = now
+        proposal.budget_reserved_at = now
+        proposal.status_reason = None
+    elif decision == REQUIRES_APPROVAL:
+        proposal.status = ProposalStatus.AWAITING_HUMAN_APPROVAL
+        proposal.status_reason = None
+    else:
+        proposal.status = ProposalStatus.POLICY_REJECTED
+        proposal.status_reason = reason
+    db.commit()  # releases the mandate budget lock
     db.refresh(proposal)
 
     if ai_audit is not None:
@@ -202,6 +221,17 @@ def _create_and_evaluate(
         "rules_evaluated": len(policy.checks),
         "violations": policy.violations,
         "proposal_fingerprint": proposal.proposal_fingerprint,
+    })
+    log_audit_event(db, "AUTHORIZATION_DECIDED", "Proposal", proposal.id, {
+        "decision": decision, "reason": reason, "mandate_id": mandate.id, "agent_id": proposal.agent_id,
+        "requested_by": proposal.agent_name or "PACT reference shopping agent",
+        "total_amount": f"{proposal.total_amount:.2f}", "currency": proposal.currency,
+        "authorization_mode": mandate.authorization_mode,
+        "max_auto_approve_amount": f"{q(mandate.max_auto_approve_amount):.2f}" if mandate.max_auto_approve_amount is not None else None,
+        "fingerprint": proposal.proposal_fingerprint,
+        "budget_reservation": reservation_ref(proposal.id) if decision == AUTO_APPROVE else None,
+        "remaining_budget_before": f"{remaining:.2f}",
+        "payment_status": "NOT_STARTED",
     })
     return proposal, policy
 
@@ -353,12 +383,20 @@ def approve_proposal(proposal_id: str, body: ProposalApproval, db: Session = Dep
         raise _fail(503, "OFFER_UNVERIFIED", f"PACT could not re-check this retailer offer before approval: {exc} "
                     "Nothing was approved. Try again in a moment.")
 
+    # Reserve budget atomically: concurrent approvals and auto-authorizations on this mandate wait here.
+    lock_mandate_budget(db, mandate)
+    db.refresh(proposal)
+    if proposal.status != ProposalStatus.AWAITING_HUMAN_APPROVAL:
+        raise _fail(409, "INVALID_STATE", f"Only proposals awaiting approval can be approved; status is {proposal.status.value}.")
+
     integrity = verify_authorization(db, proposal, mandate, product, require_approval=False)
     if not integrity.ok:
         raise _fail(409, "APPROVAL_INVALIDATED", expire_approval(db, proposal, "human approval", integrity),
                     proposal_status=ProposalStatus.APPROVAL_EXPIRED.value)
 
     proposal.status = ProposalStatus.HUMAN_APPROVED
+    proposal.authorized_by = "owner"
+    proposal.budget_reserved_at = utc_now()
     proposal.status_reason = None
     proposal.approval_fingerprint = integrity.current_fingerprint
     proposal.approval_snapshot = canonical_snapshot(proposal, mandate)
@@ -374,6 +412,7 @@ def approve_proposal(proposal_id: str, body: ProposalApproval, db: Session = Dep
         "currency": proposal.currency,
         "approval_fingerprint": proposal.approval_fingerprint,
         "rules_revalidated": len(integrity.policy.checks),
+        "budget_reservation": reservation_ref(proposal.id),
     })
     return proposal
 

@@ -79,6 +79,7 @@ export const STATUS_META: Record<ProposalStatus, StatusMeta> = {
   POLICY_REJECTED: { label: 'Blocked', tone: 'bad', group: 'blocked', description: 'The policy engine blocked this purchase.' },
   AWAITING_HUMAN_APPROVAL: { label: 'Awaiting approval', tone: 'warn', group: 'awaiting', description: 'Policy passed. Waiting for your explicit approval.' },
   HUMAN_APPROVED: { label: 'Approved', tone: 'accent', group: 'paypal', description: 'You approved. Ready for PayPal checkout.' },
+  AUTO_AUTHORIZED: { label: 'Auto-authorized', tone: 'accent', group: 'paypal', description: 'Within your auto-authorization limit. Ready for PayPal checkout.' },
   AWAITING_PAYPAL_BUYER_APPROVAL: { label: 'Awaiting PayPal', tone: 'info', group: 'paypal', description: 'PayPal order created. Waiting for the buyer in PayPal Checkout.' },
   PAYPAL_BUYER_APPROVED: { label: 'Buyer approved', tone: 'info', group: 'paypal', description: 'PayPal confirms buyer approval. Capture is available.' },
   CAPTURE_PENDING: { label: 'Capture pending', tone: 'warn', group: 'paypal', description: 'Capture requested; PayPal has not confirmed completion.' },
@@ -136,6 +137,7 @@ const EVENTS: Record<string, EventDef> = {
   POLICY_CHECK_PASSED: { label: 'Policy evaluation passed', tone: 'ok', category: 'policy' },
   POLICY_CHECK_FAILED: { label: 'Policy violation detected', tone: 'bad', category: 'policy', alert: true },
   PROPOSAL_HUMAN_APPROVED: { label: 'User approved purchase', tone: 'accent', category: 'approval' },
+  AUTHORIZATION_DECIDED: { label: 'Authorization decision', tone: 'accent', category: 'approval' },
   PROPOSAL_HUMAN_REJECTED: { label: 'User rejected purchase', tone: 'neutral', category: 'approval' },
   APPROVAL_FINGERPRINT_MISMATCH: { label: 'Approval fingerprint mismatch', tone: 'bad', category: 'approval', alert: true },
   APPROVAL_INVALIDATED: { label: 'Approval invalidated', tone: 'caution', category: 'approval', alert: true },
@@ -219,6 +221,10 @@ export function explainEvent(e: AuditLogEntry): string {
     case 'POLICY_CHECK_FAILED': {
       const v = arr(d.violations);
       return `${product ?? 'Purchase'} blocked: ${v[0] ?? 'policy violation'}${v.length > 1 ? ` (+${v.length - 1} more)` : ''}`;
+    }
+    case 'AUTHORIZATION_DECIDED': {
+      const label = d.decision === 'AUTO_APPROVE' ? 'Auto-authorized' : d.decision === 'REQUIRES_APPROVAL' ? 'Needs your approval' : 'Blocked';
+      return `${label}: ${str(d.reason) ?? ''}${d.budget_reservation ? ` Budget reserved (${str(d.budget_reservation)}).` : ''}`;
     }
     case 'PROPOSAL_HUMAN_APPROVED':
       return `User approved ${money(amount, cur)} to ${str(d.merchant) ?? 'merchant'}, bound to fingerprint ${shortHash(str(d.approval_fingerprint))}.`;

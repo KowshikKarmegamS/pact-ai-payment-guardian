@@ -40,6 +40,8 @@ router = APIRouter(prefix="/agent/v1", tags=["Agent Gateway (for AI agents)"])
 NEXT_STEP = {
     ProposalStatus.AWAITING_HUMAN_APPROVAL: "Waiting for the human to approve this exact purchase in the PACT Control Center.",
     ProposalStatus.HUMAN_APPROVED: "Approved by the human. The human now completes payment with PayPal.",
+    ProposalStatus.AUTO_AUTHORIZED: ("Authorized by PACT under the owner's auto-authorization limit. This is NOT payment: "
+                                     "the owner completes PayPal Checkout, and PACT captures only after PayPal confirms."),
     ProposalStatus.AWAITING_PAYPAL_BUYER_APPROVAL: "The human is completing the PayPal checkout.",
     ProposalStatus.PAYPAL_BUYER_APPROVED: "PayPal buyer approved. PACT will re-verify and capture.",
     ProposalStatus.CAPTURE_PENDING: "PACT is confirming the capture with PayPal.",
@@ -254,6 +256,9 @@ class PurchaseStatus(BaseModel):
     approval_url: str
     paypal_capture_id: Optional[str]
     paypal_capture_status: Optional[str]
+    authorization_decision: Optional[str] = Field(default=None, description="AUTO_APPROVE, REQUIRES_APPROVAL or BLOCKED")
+    decision_reason: Optional[str] = None
+    payment_status: str = Field(description="NOT_STARTED, IN_CHECKOUT, PENDING, COMPLETED, FAILED or CANCELLED")
     created_at: datetime
     updated_at: datetime
 
@@ -266,7 +271,17 @@ def _status(p: Proposal) -> PurchaseStatus:
         ProposalStatus.APPROVAL_EXPIRED: "VOIDED",
         ProposalStatus.PAYPAL_CANCELLED: "CANCELLED",
         ProposalStatus.PAYMENT_FAILED: "FAILED",
+        ProposalStatus.AUTO_AUTHORIZED: "AUTHORIZED",
+        ProposalStatus.HUMAN_APPROVED: "AUTHORIZED",
+        ProposalStatus.AWAITING_PAYPAL_BUYER_APPROVAL: "AUTHORIZED",
+        ProposalStatus.PAYPAL_BUYER_APPROVED: "AUTHORIZED",
+        ProposalStatus.CAPTURE_PENDING: "AUTHORIZED",
     }.get(p.status, "PENDING_HUMAN")
+    payment = {
+        ProposalStatus.AWAITING_PAYPAL_BUYER_APPROVAL: "IN_CHECKOUT", ProposalStatus.PAYPAL_BUYER_APPROVED: "IN_CHECKOUT",
+        ProposalStatus.CAPTURE_PENDING: "PENDING", ProposalStatus.CAPTURED: "COMPLETED",
+        ProposalStatus.PAYMENT_FAILED: "FAILED", ProposalStatus.PAYPAL_CANCELLED: "CANCELLED",
+    }.get(p.status, "NOT_STARTED")
     return PurchaseStatus(
         purchase_id=p.id, status=p.status, decision=decision, next_step=NEXT_STEP.get(p.status, ""),
         product_name=p.product_name, merchant=p.merchant, quantity=p.quantity, total=q(p.total_amount),
@@ -274,12 +289,13 @@ def _status(p: Proposal) -> PurchaseStatus:
         approval_url=f"{get_settings().app_base_url.rstrip('/')}/proposals/{p.id}",
         paypal_capture_id=p.paypal_capture_id if p.status == ProposalStatus.CAPTURED else None,
         paypal_capture_status=p.paypal_capture_status if p.status == ProposalStatus.CAPTURED else None,
+        authorization_decision=p.authorization_decision, decision_reason=p.decision_reason, payment_status=payment,
         created_at=as_utc(p.created_at), updated_at=as_utc(p.updated_at),
     )
 
 
 @router.post("/purchases", response_model=PurchaseStatus, status_code=201,
-             summary="Request a purchase. PACT decides; a human must approve; the agent never pays")
+             summary="Request a purchase. PACT decides (auto-authorize, ask the owner, or block); the agent never pays")
 def request_purchase(body: PurchaseRequest, agent: AgentClient = Depends(current_agent), db: Session = Depends(get_db)):
     mandate = _mandate_for(db, agent, body.mandate_id)
     if body.request_id:

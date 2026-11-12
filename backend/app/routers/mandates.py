@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.models import Mandate, Proposal, as_utc, utc_now
-from app.schemas import MandateCreate, MandateOut, MandateUpdate
+from app.schemas import MandateCreate, MandateOut, MandateUpdate, check_auto_terms
 from app.services.audit import log_audit_event
 from app.services.authorization import OPEN_STATUSES, recheck_open_proposals
 from app.services.mandate_service import build_mandate_out
@@ -60,6 +60,8 @@ def create_mandate(payload: MandateCreate, db: Session = Depends(get_db)) -> Man
         restrictions=payload.restrictions,
         expires_at=as_utc(payload.expires_at),
         is_active=True,
+        authorization_mode=payload.authorization_mode,
+        max_auto_approve_amount=payload.max_auto_approve_amount,
     )
     db.add(mandate)
     db.commit()
@@ -72,6 +74,8 @@ def create_mandate(payload: MandateCreate, db: Session = Depends(get_db)) -> Man
         "allowed_categories": mandate.allowed_categories,
         "restrictions": mandate.restrictions,
         "expires_at": _jsonable(as_utc(mandate.expires_at)),
+        "authorization_mode": mandate.authorization_mode,
+        "max_auto_approve_amount": _jsonable(mandate.max_auto_approve_amount),
     })
     return build_mandate_out(db, mandate)
 
@@ -102,6 +106,15 @@ def update_mandate(mandate_id: str, payload: MandateUpdate, db: Session = Depend
     if "expires_at" in update_data:
         _check_expiry(update_data["expires_at"])
         update_data["expires_at"] = as_utc(update_data["expires_at"])
+
+    try:
+        check_auto_terms(
+            update_data.get("authorization_mode", mandate.authorization_mode),
+            update_data.get("max_auto_approve_amount", mandate.max_auto_approve_amount),
+            update_data.get("max_budget", mandate.max_budget),
+        )
+    except ValueError as exc:
+        raise _fail(422, "VALIDATION_ERROR", str(exc))
 
     before = {k: getattr(mandate, k) for k in update_data}
     for field, val in update_data.items():

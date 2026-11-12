@@ -72,7 +72,7 @@ const INITIAL_STATE = {
       id: 'spending',
       widgets: {
         kpiPaid: { type: 'value', format: kpi('Paid through PayPal'), dataMapping: { value: [f('paid_amount', 'sum')] } },
-        kpiRequested: { type: 'value', format: kpi('Requested by agents'), dataMapping: { value: [f('requested_amount', 'sum')] } },
+        kpiRequested: { type: 'value', format: kpi('Authorized by PACT'), dataMapping: { value: [f('authorized_amount', 'sum')] } },
         kpiBlocked: { type: 'value', format: kpi('Blocked by policy'), dataMapping: { value: [f('blocked_amount', 'sum')] } },
         kpiCount: { type: 'value', format: kpi('Purchase requests'), dataMapping: { value: [f('purchase_id', 'countd')] } },
         byAgent: {
@@ -80,6 +80,7 @@ const INITIAL_STATE = {
           format: chart('Requested, paid and blocked by agent'),
           dataMapping: { categoryKey: [f('agent')], valueKey: [f('requested_amount', 'sum'), f('paid_amount', 'sum'), f('blocked_amount', 'sum')] },
         },
+        authorization: { type: 'donut-chart', format: chart('How each request was decided', 'right'), dataMapping: { categoryKey: [f('authorization')], valueKey: [f('purchase_id', 'countd')] } },
         outcomes: { type: 'donut-chart', format: chart('Outcome of every request', 'right'), dataMapping: { categoryKey: [f('outcome')], valueKey: [f('purchase_id', 'countd')] } },
         byMerchant: {
           type: 'bar-chart-stacked',
@@ -90,7 +91,7 @@ const INITIAL_STATE = {
         table: {
           type: 'grid',
           format: { ...title('Every purchase request'), style: { columnAutoSize: true } },
-          dataMapping: { cols: ['created_at', 'agent', 'product', 'merchant', 'outcome', 'requested_amount', 'paid_amount', 'mandate'].map((x) => f(x)) },
+          dataMapping: { cols: ['created_at', 'agent', 'product', 'merchant', 'authorization', 'outcome', 'requested_amount', 'paid_amount'].map((x) => f(x)) },
         },
       },
       widgetLayout: {
@@ -98,10 +99,11 @@ const INITIAL_STATE = {
         kpiRequested: { xTrack: 6, yTrack: 0, xSpan: 6, ySpan: 6 },
         kpiBlocked: { xTrack: 12, yTrack: 0, xSpan: 6, ySpan: 6 },
         kpiCount: { xTrack: 18, yTrack: 0, xSpan: 6, ySpan: 6 },
-        byAgent: { xTrack: 0, yTrack: 6, xSpan: 14, ySpan: 15 },
-        outcomes: { xTrack: 14, yTrack: 6, xSpan: 10, ySpan: 15 },
-        byMerchant: { xTrack: 0, yTrack: 21, xSpan: 14, ySpan: 24 },
-        bySource: { xTrack: 14, yTrack: 21, xSpan: 10, ySpan: 24 },
+        byAgent: { xTrack: 0, yTrack: 6, xSpan: 12, ySpan: 15 },
+        authorization: { xTrack: 12, yTrack: 6, xSpan: 12, ySpan: 15 },
+        byMerchant: { xTrack: 0, yTrack: 21, xSpan: 12, ySpan: 24 },
+        outcomes: { xTrack: 12, yTrack: 21, xSpan: 12, ySpan: 12 },
+        bySource: { xTrack: 12, yTrack: 33, xSpan: 12, ySpan: 12 },
         table: { xTrack: 0, yTrack: 45, xSpan: 24, ySpan: 20 },
       },
     },
@@ -123,6 +125,8 @@ const FIELDS: AgFieldDefinition[] = [
   { id: 'outcome', name: 'Outcome', format: 'textFormat' },
   { id: 'status', name: 'Status', format: 'textFormat' },
   { id: 'decided_by_policy', name: 'Policy decision', format: 'textFormat' },
+  { id: 'authorization', name: 'Authorization', format: 'textFormat' },
+  { id: 'authorized_amount', name: 'Authorized amount', format: 'currencyFormat', formatOptions: money },
   { id: 'requested_amount', name: 'Requested amount', format: 'currencyFormat', formatOptions: money },
   { id: 'paid_amount', name: 'Paid amount', format: 'currencyFormat', formatOptions: money },
   { id: 'blocked_amount', name: 'Blocked amount', format: 'currencyFormat', formatOptions: money },

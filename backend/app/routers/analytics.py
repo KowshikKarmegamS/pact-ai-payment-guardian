@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Mandate, Proposal, ProposalStatus, as_utc
+from app.models import COMMITTED_STATUSES, Mandate, Proposal, ProposalStatus, as_utc
 from app.money import q
 from app.services.studio_llm import run_turn
 
@@ -23,6 +23,7 @@ OUTCOME = {
     ProposalStatus.APPROVAL_EXPIRED: "Approval voided",
     ProposalStatus.AWAITING_HUMAN_APPROVAL: "Awaiting approval",
     ProposalStatus.HUMAN_APPROVED: "Approved, in checkout",
+    ProposalStatus.AUTO_AUTHORIZED: "Approved, in checkout",
     ProposalStatus.AWAITING_PAYPAL_BUYER_APPROVAL: "Approved, in checkout",
     ProposalStatus.PAYPAL_BUYER_APPROVED: "Approved, in checkout",
     ProposalStatus.CAPTURE_PENDING: "Approved, in checkout",
@@ -48,8 +49,10 @@ class PurchaseRow(BaseModel):
     outcome: str
     status: str
     decided_by_policy: str
+    authorization: str
     requested_amount: float
     paid_amount: float
+    authorized_amount: float
     blocked_amount: float
     quantity: int
     currency: str
@@ -88,8 +91,12 @@ def purchase_rows(db: Session) -> List[PurchaseRow]:
             outcome=OUTCOME.get(p.status, p.status.value),
             status=p.status.value,
             decided_by_policy="Blocked" if blocked else "Passed",
+            authorization={"AUTO_APPROVE": "Auto-authorized", "REQUIRES_APPROVAL": "Needed owner approval",
+                           "BLOCKED": "Blocked"}.get(p.authorization_decision or "",
+                                                     "Blocked" if blocked else "Needed owner approval"),
             requested_amount=total,
             paid_amount=paid,
+            authorized_amount=total if p.status in COMMITTED_STATUSES or p.status == ProposalStatus.CAPTURED else 0.0,
             blocked_amount=total if blocked else 0.0,
             quantity=int(p.quantity),
             currency=(p.currency or "USD").upper(),

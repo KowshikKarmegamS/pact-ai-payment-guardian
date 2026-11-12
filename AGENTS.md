@@ -100,6 +100,7 @@ Persisted `ProposalStatus` values (see `backend/app/models.py`):
 
 ```
 AWAITING_HUMAN_APPROVAL -> HUMAN_APPROVED -> AWAITING_PAYPAL_BUYER_APPROVAL
+(or, within the mandate's auto-authorization limit, created directly as AUTO_AUTHORIZED -> AWAITING_PAYPAL_BUYER_APPROVAL)
   -> PAYPAL_BUYER_APPROVED -> CAPTURE_PENDING -> CAPTURED
 Side exits: POLICY_REJECTED, HUMAN_REJECTED, PAYPAL_CANCELLED, PAYMENT_FAILED, APPROVAL_EXPIRED
 ```
@@ -125,6 +126,9 @@ Rules for changes:
   mark anything as paid at the retailer.
 - The AG Studio agent proxy (`/api/analytics/agent-turn`) is analytics-only: it must never expose PACT purchase,
   approval or payment tools to the model.
+- Authorization decisions (AUTO_APPROVE / REQUIRES_APPROVAL / BLOCKED) come only from `services/auto_authorization.py`
+  after the policy engine. A user approval never overrides a policy violation. Auto-authorization never skips PayPal
+  buyer approval. Any code path that moves money into the committed budget must call `lock_mandate_budget` first.
 - Merchant connectors only supply offers into the catalog; they must never decide, approve or pay. A sync that
   changes an offer must re-verify open proposals (`recheck_open_proposals`).
 - Schema changes must be additive and listed in `_ADDITIVE_COLUMNS` (`app/database.py`).
