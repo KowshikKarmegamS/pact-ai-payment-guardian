@@ -281,7 +281,7 @@ export const ShoppingAssistant: React.FC = () => {
   }, [params, mandateId, setParams, submit]);
 
   const ai = status.data?.ai;
-  const engine = !ai ? 'The recommender' : ai.mode === 'heuristic' ? 'The keyword matcher' : ai.mode === 'gemini' ? 'Gemini' : 'OpenAI';
+  const engine = !ai ? 'The recommender' : ai.mode === 'heuristic' ? 'The keyword matcher' : 'Gemini';
 
   return (
     <div>

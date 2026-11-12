@@ -31,7 +31,7 @@ PACT is a payment authorization gateway that lets AI agents transact within user
 
 **Spending analytics in AG Studio.** The Control Center has an AG Studio dashboard over every real purchase request (paid, requested and stopped-by-policy totals, outcomes, agents, merchants, sources), with cross-filtering and Studio's AI agents, which run on Gemini through PACT's server so no key reaches the browser.
 
-**Any store, not just one catalog.** Merchant platforms plug in through connectors: one `fetch_offers()` method per platform. The bundled example syncs a store exported in Shopify's `products.json` format. Synced offers face the same policy engine, fingerprint and PayPal flow, a store not on the mandate is blocked, and a sync that changes a price voids any approval that no longer matches.
+**Any store, not just one catalog.** Merchant platforms plug in through connectors: one `fetch_offers()` method per platform, with Channel3 as the live example. Synced offers face the same policy engine, fingerprint and PayPal flow, a store not on the mandate is blocked, and a sync that changes a price voids any approval that no longer matches.
 
 Every proposal gets an **Authorization Receipt** explaining which rules passed or failed, the budget at decision time, the approval fingerprint, PayPal IDs and the full lifecycle timeline, built from persisted server data and an append-only audit log.
 
@@ -45,7 +45,7 @@ PayPal is the execution layer and the source of truth for money movement. PACT u
 
 ## Why AI is useful here
 
-Turning "I need an ergonomic mouse for CAD" into the right catalog item is a language problem and a good fit for an LLM (Google Gemini via the Gemini Developer API, with OpenAI as an optional alternative). PACT keeps that benefit while treating the model as untrusted: it never sets prices, merchants, budgets or outcomes. When no API key is configured, or the model fails or returns invalid output, PACT falls back to a keyword matcher and labels it as not AI.
+Turning "I need an ergonomic mouse for CAD" into the right catalog item is a language problem and a good fit for an LLM (Google Gemini via the Gemini Developer API). PACT keeps that benefit while treating the model as untrusted: it never sets prices, merchants, budgets or outcomes. When no API key is configured, or the model fails or returns invalid output, PACT falls back to a keyword matcher and labels it as not AI.
 
 ## Why deterministic authorization matters
 
@@ -53,7 +53,7 @@ The demo includes a product listing whose description instructs AI agents that i
 
 ## How we built it
 
-An Agent Gateway API with per-agent scoped keys, and a dependency-free MCP server (JSON-RPC over stdio). FastAPI, SQLAlchemy 2, SQLite, Pydantic, httpx (Gemini REST API) and the OpenAI SDK on the backend; React, Vite, TypeScript, Tailwind and Lucide on the frontend. The policy engine is a pure module with no database or network access. Money is `Decimal` throughout. Capture safety combines an atomic database lock, a stable PayPal-Request-Id, and reconciliation through order lookup after timeouts. 156 automated backend tests (all passing) run against an in-memory PayPal fake, so the suite can never charge anyone. The Control Center is protected by owner sign-in (`OWNER_PASSWORD`, signed HttpOnly cookie), and deployments fail closed without it.
+An Agent Gateway API with per-agent scoped keys, and a dependency-free MCP server (JSON-RPC over stdio). FastAPI, SQLAlchemy 2, SQLite, Pydantic, httpx (Gemini, PayPal and Channel3 REST APIs) on the backend; React, Vite, TypeScript, Tailwind and Lucide on the frontend. The policy engine is a pure module with no database or network access. Money is `Decimal` throughout. Capture safety combines an atomic database lock, a stable PayPal-Request-Id, and reconciliation through order lookup after timeouts. 156 automated backend tests (all passing) run against an in-memory PayPal fake, so the suite can never charge anyone. The Control Center is protected by owner sign-in (`OWNER_PASSWORD`, signed HttpOnly cookie), and deployments fail closed without it.
 
 ## Challenges
 
@@ -72,4 +72,4 @@ Live store connectors (Shopify Admin API, WooCommerce) with scheduled syncs, mul
 
 ## Built with
 
-python, mcp, fastapi, sqlalchemy, sqlite, pydantic, google-gemini, openai, paypal-orders-v2, paypal-checkout, channel3, ag-grid, ag-studio, react, typescript, vite, tailwindcss
+python, mcp, fastapi, sqlalchemy, sqlite, pydantic, google-gemini, paypal-orders-v2, paypal-checkout, channel3, ag-grid, ag-studio, react, typescript, vite, tailwindcss

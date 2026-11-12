@@ -306,11 +306,9 @@ export interface ProductUpdateResult {
 
 export interface SystemStatus {
   ai: {
-    mode: 'gemini' | 'openai' | 'heuristic';
+    mode: 'gemini' | 'heuristic';
     model: string | null;
-    requested_provider: string;
     gemini_key_configured: boolean;
-    openai_key_configured: boolean;
     api_key_configured: boolean;
     note: string | null;
   };

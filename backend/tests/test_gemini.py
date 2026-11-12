@@ -33,9 +33,7 @@ def _gemini_ok(text: str, model: str = "gemini-2.5-flash") -> dict:
 def gemini(monkeypatch):
     """Configure Gemini and capture outgoing requests; tests replace state['respond']."""
     s = get_settings()
-    monkeypatch.setattr(s, "AI_PROVIDER", "auto")
     monkeypatch.setattr(s, "GEMINI_API_KEY", "test-gemini-key")
-    monkeypatch.setattr(s, "OPENAI_API_KEY", "")
     state = {"requests": [], "respond": lambda req: httpx.Response(200, json=_gemini_ok(OK_JSON))}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -84,7 +82,7 @@ async def test_rejected_thinking_level_is_retried_without_it(gemini, monkeypatch
     assert "temperature" not in first  # Gemini 3 keeps its default temperature
 
 
-def test_auto_prefers_gemini_when_key_set(gemini):
+def test_gemini_used_when_key_set(gemini):
     s = get_settings()
     assert s.ai_provider == "gemini"
     assert s.ai_model == s.GEMINI_MODEL
@@ -164,13 +162,11 @@ async def test_gemini_thought_parts_are_ignored(gemini):
     assert rec.provider == "gemini" and rec.quantity == 2
 
 
-def test_explicit_openai_provider_without_key_is_heuristic(monkeypatch):
+def test_without_gemini_key_the_labelled_heuristic_is_used(monkeypatch):
     s = get_settings()
-    monkeypatch.setattr(s, "AI_PROVIDER", "openai")
-    monkeypatch.setattr(s, "OPENAI_API_KEY", "")
-    monkeypatch.setattr(s, "GEMINI_API_KEY", "set-but-not-chosen")
-    assert s.ai_provider == "heuristic"
-    assert "OPENAI_API_KEY" in s.ai_missing_key_note
+    monkeypatch.setattr(s, "GEMINI_API_KEY", "")
+    assert s.ai_provider == "heuristic" and s.ai_model is None
+    assert "GEMINI_API_KEY" in s.ai_missing_key_note
 
 
 def test_hijacked_gemini_still_blocked_end_to_end(client, sample_mandate, db_session, gemini):

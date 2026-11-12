@@ -4,7 +4,7 @@
   python build.py --only 03-dash,04-mandate   # rebuild selected clips, then the final cut
 
 Inputs : frames/<take>/ (from record.mjs), work/voice/<id>.wav (from tts.ps1), storyboard.json
-Outputs: ../pact-hackathon-final.mp4, ../pact-recording-raw.mp4, ../pact-narration.txt,
+Outputs: ../pact-hackathon-final.mp4, ../pact-narration.txt,
          ../pact-demo-assets/captions.srt
 """
 import json
@@ -230,11 +230,6 @@ def main():
     lines.append(f"\nTotal running time: {int(total // 60)}:{total % 60:04.1f}")
     (DEMO / "pact-narration.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    # Raw application recording: the three app takes back to back, original timing, no narration.
-    raws = [build_take(t) for t in ("app1", "app2", "app3", "app4", "app5", "app6") if (FRAMES / t / "frames.json").exists()]
-    (WORK / "raw.txt").write_text("\n".join(f"file '{r.as_posix()}'" for r in raws), encoding="utf-8")
-    run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", WORK / "raw.txt", "-c:v", "libx264", "-crf", "21", "-preset", "medium",
-         "-pix_fmt", "yuv420p", "-movflags", "+faststart", DEMO / "pact-recording-raw.mp4"])
     print(f"\nfinal: {final}  ({total:.1f}s)")
 
 

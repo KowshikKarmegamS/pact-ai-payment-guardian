@@ -25,10 +25,6 @@ class ProductBase(BaseModel):
     in_stock: bool = Field(default=True, description="Availability flag")
 
 
-class ProductCreate(ProductBase):
-    pass
-
-
 class ProductOut(ProductBase):
     id: int = Field(..., description="Unique product identifier")
     source: str = Field(default="pact-catalog", description="Merchant connector that supplied this offer")

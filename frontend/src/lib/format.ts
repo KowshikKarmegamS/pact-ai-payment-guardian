@@ -102,12 +102,11 @@ export const MANDATE_STATUS: Record<MandateStatus, { label: string; tone: Tone }
 };
 
 export function isAIProvider(provider?: string | null): boolean {
-  return provider === 'gemini' || provider === 'openai';
+  return provider === 'gemini';
 }
 
 export function aiLabel(provider?: string | null, model?: string | null): string {
   if (provider === 'gemini') return `Google Gemini · ${model ?? 'model'}`;
-  if (provider === 'openai') return `OpenAI · ${model ?? 'model'}`;
   if (provider === 'heuristic') return 'Keyword fallback (not AI)';
   if (provider === 're-evaluation') return 'Re-evaluation (no AI call)';
   if (provider === 'user-selected') return 'Selected by you';

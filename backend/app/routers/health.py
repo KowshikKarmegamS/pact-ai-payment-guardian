@@ -47,9 +47,7 @@ async def get_status(check_paypal: bool = Query(False, description="Perform a li
         "ai": {
             "mode": s.ai_provider,
             "model": s.ai_model,
-            "requested_provider": (s.AI_PROVIDER or "auto").lower(),
             "gemini_key_configured": s.gemini_configured,
-            "openai_key_configured": s.openai_configured,
             "api_key_configured": s.ai_provider != "heuristic",
             "note": s.ai_missing_key_note,
         },

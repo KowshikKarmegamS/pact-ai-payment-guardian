@@ -7,9 +7,8 @@ Price, merchant, category and the policy decision are always taken from the
 authoritative catalog and the deterministic policy engine. The model has no
 tools and cannot create orders or capture payments.
 
-Providers: Google Gemini Developer API (default, free tier available) or OpenAI,
-selected by AI_PROVIDER. When no provider is configured, the call fails, or returns output that fails validation,
-PACT falls back to a transparent keyword heuristic and records exactly why.
+Model: Google Gemini Developer API (GEMINI_API_KEY). When no key is configured, the call fails, or the output fails
+validation, PACT falls back to a transparent keyword heuristic and records exactly why.
 """
 
 import asyncio
@@ -27,11 +26,9 @@ from app.policy import MAX_QUANTITY_HARD_LIMIT
 
 logger = logging.getLogger("pact.agent")
 
-PROVIDER_OPENAI = "openai"
 PROVIDER_GEMINI = "gemini"
 PROVIDER_HEURISTIC = "heuristic"
 GEMINI_RETRY_DELAY_SECONDS = 1.5
-_PROVIDER_NAMES = {PROVIDER_OPENAI: "OpenAI", PROVIDER_GEMINI: "Gemini"}
 
 
 @dataclass
@@ -60,7 +57,7 @@ class AIOutputError(ValueError):
 
 
 def parse_ai_output(
-    content: Optional[str], catalog: List[Product], provider: str = PROVIDER_OPENAI
+    content: Optional[str], catalog: List[Product], provider: str = PROVIDER_GEMINI
 ) -> AIAgentRecommendation:
     """Validate raw model output against the schema and the authoritative catalog."""
     if not content or not content.strip():
@@ -225,32 +222,6 @@ async def _call_gemini(user_prompt: str, catalog: List[Product]) -> AIAgentRecom
     return rec
 
 
-async def _call_openai(user_prompt: str, catalog: List[Product]) -> AIAgentRecommendation:
-    from openai import AsyncOpenAI
-
-    settings = get_settings()
-    client = AsyncOpenAI(
-        api_key=settings.OPENAI_API_KEY.strip(),
-        timeout=settings.OPENAI_TIMEOUT_SECONDS,
-        max_retries=1,
-    )
-    user_message = _user_message(user_prompt, catalog)
-    response = await client.chat.completions.create(
-        model=settings.OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_message},
-        ],
-        response_format={"type": "json_object"},
-        temperature=0.1,
-        max_tokens=400,
-    )
-    content = response.choices[0].message.content if response.choices else None
-    rec = parse_ai_output(content, catalog)
-    rec.model = getattr(response, "model", None) or settings.OPENAI_MODEL
-    return rec
-
-
 async def generate_shopping_recommendation(
     user_prompt: str,
     mandate: Mandate,
@@ -263,11 +234,10 @@ async def generate_shopping_recommendation(
     settings = get_settings()
     provider = settings.ai_provider
     fallback_reason = settings.ai_missing_key_note or "No AI provider configured."
-    if provider != PROVIDER_HEURISTIC:
-        name = _PROVIDER_NAMES[provider]
-        call = _call_gemini if provider == PROVIDER_GEMINI else _call_openai
+    if provider == PROVIDER_GEMINI:
+        name = "Gemini"
         try:
-            return await call(user_prompt, available_products)
+            return await _call_gemini(user_prompt, available_products)
         except AIOutputError as exc:
             fallback_reason = f"{name} output rejected by validation: {exc}."
         except AIProviderError as exc:

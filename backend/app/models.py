@@ -167,7 +167,7 @@ class Proposal(Base):
     # --- AI provenance (informational only; never used for authorization) ---
     user_prompt = Column(Text, nullable=True)
     ai_reasoning = Column(Text, nullable=True)
-    ai_provider = Column(String(32), nullable=True)  # "openai" | "heuristic" | "re-evaluation"
+    ai_provider = Column(String(32), nullable=True)  # "gemini" | "heuristic" | "user-selected" | "external-agent"
     ai_model = Column(String(100), nullable=True)
     ai_fallback_reason = Column(Text, nullable=True)
     supersedes_id = Column(String(36), nullable=True)

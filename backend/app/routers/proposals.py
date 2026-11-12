@@ -277,7 +277,7 @@ async def generate_proposal(request: ShoppingPromptRequest, db: Session = Depend
         },
     )
 
-    engine = {"openai": f"OpenAI {rec.model}", "gemini": f"Google Gemini {rec.model}"}.get(
+    engine = {"gemini": f"Google Gemini {rec.model}"}.get(
         rec.provider, "heuristic fallback (not AI)"
     )
     message = (

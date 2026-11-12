@@ -1,6 +1,6 @@
 """AI output validation, provider transparency, and adversarial-input tests.
 
-The OpenAI client is never called: _call_openai is replaced where needed.
+No model is ever called: Gemini behaviour is tested in test_gemini.py against a stubbed endpoint.
 """
 
 import json
@@ -62,7 +62,7 @@ def test_ai_cannot_set_price_merchant_or_approval():
 
 def test_valid_ai_output_is_accepted():
     rec = parse_ai_output('{"product_id": 1, "quantity": 2, "ai_reasoning": "Ergonomic for CAD."}', _catalog())
-    assert rec.product.id == 1 and rec.quantity == 2 and rec.provider == "openai"
+    assert rec.product.id == 1 and rec.quantity == 2 and rec.provider == "gemini"
 
 
 # ---------------------------------------------------------------------------
@@ -71,54 +71,11 @@ def test_valid_ai_output_is_accepted():
 
 @pytest.mark.asyncio
 async def test_no_api_key_uses_labelled_heuristic(monkeypatch):
-    monkeypatch.setattr(get_settings(), "OPENAI_API_KEY", "")
+    monkeypatch.setattr(get_settings(), "GEMINI_API_KEY", "")
     rec = await agent_module.generate_shopping_recommendation("ergonomic mouse for CAD", None, _catalog())
     assert rec.provider == "heuristic"
     assert rec.model is None
     assert "not set" in rec.fallback_reason
-
-
-@pytest.mark.asyncio
-async def test_openai_used_when_configured(monkeypatch):
-    monkeypatch.setattr(get_settings(), "OPENAI_API_KEY", "sk-test")
-    called = {}
-
-    async def fake_call(prompt, catalog):
-        called["yes"] = True
-        rec = parse_ai_output('{"product_id": 1, "quantity": 1, "ai_reasoning": "Best ergonomic match."}', catalog)
-        rec.model = "gpt-4o-mini"
-        return rec
-
-    monkeypatch.setattr(agent_module, "_call_openai", fake_call)
-    rec = await agent_module.generate_shopping_recommendation("mouse", None, _catalog())
-    assert called and rec.provider == "openai" and rec.model == "gpt-4o-mini" and rec.fallback_reason is None
-
-
-@pytest.mark.asyncio
-async def test_malformed_openai_output_falls_back_with_reason(monkeypatch):
-    monkeypatch.setattr(get_settings(), "OPENAI_API_KEY", "sk-test")
-
-    async def bad_call(prompt, catalog):
-        return parse_ai_output('{"product_id": 424242, "quantity": 1, "ai_reasoning": "x"}', catalog)
-
-    monkeypatch.setattr(agent_module, "_call_openai", bad_call)
-    rec = await agent_module.generate_shopping_recommendation("ergonomic mouse", None, _catalog())
-    assert rec.provider == "heuristic"
-    assert "rejected by validation" in rec.fallback_reason
-    assert "not in the catalog" in rec.fallback_reason
-
-
-@pytest.mark.asyncio
-async def test_openai_network_error_falls_back_with_reason(monkeypatch):
-    monkeypatch.setattr(get_settings(), "OPENAI_API_KEY", "sk-test")
-
-    async def boom(prompt, catalog):
-        raise TimeoutError("slow")
-
-    monkeypatch.setattr(agent_module, "_call_openai", boom)
-    rec = await agent_module.generate_shopping_recommendation("mouse", None, _catalog())
-    assert rec.provider == "heuristic"
-    assert "TimeoutError" in rec.fallback_reason
 
 
 def test_heuristic_picks_expected_demo_products():

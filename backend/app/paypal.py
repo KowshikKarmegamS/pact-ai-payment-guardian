@@ -64,11 +64,6 @@ class PayPalError(Exception):
             "debug_id": self.debug_id,
         }
 
-    # Back-compat with older callers that read .details
-    @property
-    def details(self) -> Dict[str, Any]:
-        return self.safe_details()
-
 
 _FRIENDLY = {
     "CURRENCY_NOT_SUPPORTED": (

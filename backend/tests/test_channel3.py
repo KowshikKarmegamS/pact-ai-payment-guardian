@@ -315,3 +315,22 @@ def test_rotating_attribution_id_does_not_void_a_valid_approval(client, db_sessi
     fake_paypal.buyer_approves(res.json()["order_id"])
     assert client.post(f"/api/payments/{p['id']}/capture").status_code == 409
     assert fake_paypal.capture_calls == 0
+
+
+def test_scheduled_sync_reverifies_open_approvals(client, db_session, c3, retail_mandate, monkeypatch):
+    monkeypatch.setattr(get_settings(), "CHANNEL3_SYNC_QUERIES", "logitech mouse")
+    first = client.post("/api/connectors/channel3/sync")
+    assert first.status_code == 200 and first.json()["created"] == 3
+    p = _propose(client, retail_mandate, _product(db_session, "bestbuy.com"))
+    assert _approve(client, p).status_code == 200
+
+    c3.set_offer("bestbuy.com", price=89.00)
+    res = client.post("/api/connectors/channel3/sync").json()
+    assert res["updated"] == 1 and res["approvals_invalidated"] == 1
+    db_session.expire_all()
+    assert db_session.get(Proposal, p["id"]).status == ProposalStatus.APPROVAL_EXPIRED
+
+    listed = {c["id"]: c for c in client.get("/api/connectors").json()}
+    assert set(listed) == {"pact-catalog", "channel3"}
+    assert listed["channel3"]["last_synced_at"] is not None and listed["pact-catalog"]["syncable"] is False
+    assert client.post("/api/connectors/unknown/sync").status_code == 404

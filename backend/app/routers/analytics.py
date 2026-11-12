@@ -32,8 +32,7 @@ OUTCOME = {
     ProposalStatus.PAYMENT_FAILED: "Payment failed",
 }
 
-SOURCE = {None: "PACT catalog", "pact-catalog": "PACT catalog", "channel3": "Channel3 (live retailers)",
-          "northwind-supply": "Northwind Supply"}
+SOURCE = {None: "PACT catalog", "pact-catalog": "PACT catalog", "channel3": "Channel3 (live retailers)"}
 
 
 class PurchaseRow(BaseModel):
@@ -66,7 +65,7 @@ class AnalyticsDataset(BaseModel):
 def _engine(p: Proposal) -> str:
     if p.agent_id:
         return "External agent"
-    return {"gemini": "Gemini", "openai": "OpenAI", "heuristic": "Keyword fallback (not AI)",
+    return {"gemini": "Gemini", "heuristic": "Keyword fallback (not AI)",
             "user-selected": "Chosen by owner"}.get(p.ai_provider or "", p.ai_provider or "Unknown")
 
 

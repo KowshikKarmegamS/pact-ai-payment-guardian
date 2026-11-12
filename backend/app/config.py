@@ -29,9 +29,6 @@ class Settings(BaseSettings):
     )
 
     DATABASE_URL: str = "sqlite:///./pact.db"
-    # Recommendation provider: "gemini", "openai", or "auto" (Gemini if its key is set,
-    # else OpenAI if its key is set, else the labelled keyword heuristic).
-    AI_PROVIDER: str = "auto"
     AI_TIMEOUT_SECONDS: float = 20.0
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-3.5-flash"
@@ -40,9 +37,6 @@ class Settings(BaseSettings):
     # Tried once when the primary model answers 500/503 ("high demand"). Empty disables it.
     GEMINI_FALLBACK_MODEL: str = "gemini-3.5-flash-lite"
     GEMINI_BASE_URL: str = "https://generativelanguage.googleapis.com/v1beta"
-    OPENAI_API_KEY: str = ""
-    OPENAI_MODEL: str = "gpt-4o-mini"
-    OPENAI_TIMEOUT_SECONDS: float = 20.0
     PAYPAL_CLIENT_ID: str = ""
     PAYPAL_CLIENT_SECRET: str = ""
     PAYPAL_BASE_URL: str = "https://api-m.sandbox.paypal.com"
@@ -99,42 +93,26 @@ class Settings(BaseSettings):
         return bool(self.PAYPAL_CLIENT_ID.strip() and self.PAYPAL_CLIENT_SECRET.strip())
 
     @property
-    def openai_configured(self) -> bool:
-        return bool(self.OPENAI_API_KEY and self.OPENAI_API_KEY.strip())
-
-    @property
     def gemini_configured(self) -> bool:
         return bool(self.GEMINI_API_KEY and self.GEMINI_API_KEY.strip())
 
     @property
     def ai_provider(self) -> str:
-        """The provider that will be called: "gemini", "openai" or "heuristic"."""
-        choice = (self.AI_PROVIDER or "auto").strip().lower()
-        if choice == "gemini":
-            return "gemini" if self.gemini_configured else "heuristic"
-        if choice == "openai":
-            return "openai" if self.openai_configured else "heuristic"
-        if self.gemini_configured:
-            return "gemini"
-        if self.openai_configured:
-            return "openai"
-        return "heuristic"
+        """The recommender that will be called: "gemini", or the labelled "heuristic" when no key is set."""
+        return "gemini" if self.gemini_configured else "heuristic"
 
     @property
     def ai_model(self) -> str | None:
-        return {"gemini": self.GEMINI_MODEL, "openai": self.OPENAI_MODEL}.get(self.ai_provider)
+        return self.GEMINI_MODEL if self.gemini_configured else None
 
     @property
     def ai_missing_key_note(self) -> str | None:
-        if self.ai_provider != "heuristic":
+        if self.gemini_configured:
             return None
-        choice = (self.AI_PROVIDER or "auto").strip().lower()
-        key = {"gemini": "GEMINI_API_KEY", "openai": "OPENAI_API_KEY"}.get(choice, "GEMINI_API_KEY (or OPENAI_API_KEY)")
-        return f"{key} not set: recommendations use the keyword heuristic (not AI)."
+        return "GEMINI_API_KEY not set: recommendations use the keyword heuristic (not AI)."
 
     def __repr__(self) -> str:
         """Mask sensitive keys to prevent credential leakage in logs."""
-        masked_openai = "***REDACTED***" if self.OPENAI_API_KEY else "not-set"
         masked_gemini = "***REDACTED***" if self.GEMINI_API_KEY else "not-set"
         masked_paypal_id = "***REDACTED***" if self.PAYPAL_CLIENT_ID else "not-set"
         masked_paypal_sec = "***REDACTED***" if self.PAYPAL_CLIENT_SECRET else "not-set"
@@ -143,15 +121,12 @@ class Settings(BaseSettings):
         return (
             f"Settings("
             f"DATABASE_URL='{self.DATABASE_URL}', "
-            f"AI_PROVIDER='{self.AI_PROVIDER}', "
             f"GEMINI_MODEL='{self.GEMINI_MODEL}', "
-            f"OPENAI_MODEL='{self.OPENAI_MODEL}', "
             f"PAYPAL_BASE_URL='{self.PAYPAL_BASE_URL}', "
             f"PAYPAL_CURRENCY='{self.currency}', "
             f"APP_BASE_URL='{self.app_base_url}', "
             f"CORS_ORIGINS='{self.CORS_ORIGINS}', "
             f"GEMINI_API_KEY='{masked_gemini}', "
-            f"OPENAI_API_KEY='{masked_openai}', "
             f"PAYPAL_CLIENT_ID='{masked_paypal_id}', "
             f"PAYPAL_CLIENT_SECRET='{masked_paypal_sec}', "
             f"APP_SECRET_KEY='{masked_app_secret}')"

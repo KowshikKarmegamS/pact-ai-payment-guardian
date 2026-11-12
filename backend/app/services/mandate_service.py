@@ -39,14 +39,6 @@ def budget_breakdown(
     return spent, committed, remaining
 
 
-def calculate_mandate_budget(
-    db: Session, mandate: Mandate, exclude_proposal_id: Optional[str] = None
-) -> Tuple[Decimal, Decimal]:
-    """Backward-compatible (used_total, remaining) helper."""
-    spent, committed, remaining = budget_breakdown(db, mandate, exclude_proposal_id)
-    return spent + committed, remaining
-
-
 def mandate_status(mandate: Mandate) -> str:
     if mandate.revoked_at is not None:
         return "revoked"

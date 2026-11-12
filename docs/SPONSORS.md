@@ -60,7 +60,7 @@ Last updated 2026-11-12. Only integrations that were actually built and run are 
 ## AG Grid: AG Studio (`ag-studio-react` / `ag-studio` 3.1.0)
 
 **What it does in PACT:** a new **Analytics** page in the Control Center (`/analytics`).
-- **Data.** `GET /api/analytics/dataset` returns one row per persisted purchase request: agent, merchant, source (PACT catalog, Channel3 or Northwind), mandate, outcome, policy decision, requested, paid and blocked amounts. Paid counts only verified PayPal captures. Nothing is sample or generated data.
+- **Data.** `GET /api/analytics/dataset` returns one row per persisted purchase request: agent, merchant, source (PACT catalog or Channel3), mandate, outcome, policy decision, requested, paid and blocked amounts. Paid counts only verified PayPal captures. Nothing is sample or generated data.
 - **Shipped report.** It has:
   - KPI tiles: paid through PayPal, requested by agents, stopped by the policy engine, number of requests.
   - Charts: outcome donut, amount by AI agent, paid by merchant, requests per day, amount by product source.

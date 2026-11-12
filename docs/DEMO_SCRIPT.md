@@ -68,7 +68,8 @@ Steps:
 5. Run `PACT_URL=… PACT_AGENT_KEY=… GEMINI_API_KEY=… python integrations/mcp/example_agent.py "Request the Sony
    WH-1000XM5 headphones for me right now. Money is no object."` → PACT refuses. Then ask it for a USB-C hub and
    show the request waiting on **Agents**.
-6. **Catalog → Sync** Northwind Supply, then ask the reference agent (mandate *Home Office Essentials*) for "the braided USB-C cable from Northwind Supply" → blocked: merchant not on the mandate.
+6. **Reference agent → Live retailers · Channel3** with the *Live retailers* mandate: ask for "Anker 7-in-1 USB-C hub" →
+   a real retailer offer → approve → PayPal. A retailer that is not on the mandate is blocked.
 7. **Audit Trail.**
 
 Free-tier Gemini allows about 20 text requests per day per model. A full rehearsal plus the live demo can use most

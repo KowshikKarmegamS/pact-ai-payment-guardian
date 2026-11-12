@@ -128,13 +128,6 @@ export const Button: React.FC<
   </button>
 );
 
-export const Spinner: React.FC<{ label?: string }> = ({ label = 'Loading…' }) => (
-  <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted" role="status">
-    <Loader2 className="h-4 w-4 animate-spin" />
-    {label}
-  </div>
-);
-
 export const Skeleton: React.FC<{ className?: string }> = ({ className }) => <div className={cx('skeleton', className)} aria-hidden />;
 
 export const SkeletonRows: React.FC<{ rows?: number }> = ({ rows = 4 }) => (
