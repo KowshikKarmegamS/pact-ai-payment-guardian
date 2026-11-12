@@ -21,9 +21,65 @@ PACT does not replace PayPal's payment security; it adds an independent governan
 
 **New: live retailers through Channel3.** Agents can search 100M+ real products across 25,000+ retailers; every offer still faces the mandate, the fingerprint-bound approval and PayPal. **Spending analytics in AG Studio**, with Studio's AI agents running on Gemini through PACT's server. See [docs/SPONSORS.md](docs/SPONSORS.md) for exactly what each sponsor integration does and what was verified.
 
-Built for the PayPal AI Hackathon. MIT licensed. **Live (owner sign-in required):** https://pact-ai-payment-guardian.onrender.com · **Demo video:** [`demo/pact-hackathon-final.mp4`](demo/pact-hackathon-final.mp4)
+Built for the PayPal AI Hackathon. MIT licensed. **Live (owner sign-in required; see [For judges](#for-judges-access-and-testing)):** https://pact-ai-payment-guardian.onrender.com · **Demo video:** [`demo/pact-hackathon-final.mp4`](demo/pact-hackathon-final.mp4)
 
 ---
+
+## For judges: access and testing
+
+There are two ways in. Both are PayPal **Sandbox** only: no real money moves.
+
+### A. The live app (no setup)
+
+1. Open https://pact-ai-payment-guardian.onrender.com. It runs on Render's free plan: the first load after idle can take
+   about a minute, and data resets when the instance restarts.
+2. Sign in to the Control Center with the **owner password**.
+3. At PayPal Checkout, log in with the **PayPal Sandbox buyer account**.
+
+The owner password and the Sandbox buyer login are in the Devpost submission's **Testing instructions** (visible to
+judges and the sponsor only). They are deliberately not in this public repository: the deployment holds the project's own
+Gemini, Channel3 and PayPal Sandbox keys. If you cannot find them, ask through Devpost and we will send them.
+
+### B. Run it locally (about 10 minutes)
+
+Follow [Run it locally](#run-it-locally). Every key is free to obtain, and only PayPal is needed for the payment steps:
+
+| Setting | Needed for | Where to get it | Without it |
+|---|---|---|---|
+| `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` (`backend/.env`) | PayPal order, buyer approval, capture | developer.paypal.com → Apps & Credentials → **Sandbox** → Create App ([details](#paypal-sandbox-setup)) | Everything up to "Pay with PayPal" works; payment steps report PayPal as not configured |
+| Sandbox **personal** (buyer) account | Approving the payment in PayPal Checkout | developer.paypal.com → Testing Tools → Sandbox Accounts (one is created with your developer account) | — |
+| `GEMINI_API_KEY` (`backend/.env`) | AI product picks, AG Studio's AI agents, the MCP example agent | https://aistudio.google.com/apikey (free tier) | A keyword heuristic picks products and is labelled as not-AI |
+| `CHANNEL3_API_KEY` (`backend/.env`) | Live retailer offers | https://trychannel3.com (sign up for an API key) | Only the fixed-price Demo Store connector is offered |
+| `VITE_AG_STUDIO_LICENSE_KEY` (`frontend/.env`) | AG Studio without a watermark | AG Grid (AG Studio trial or license) | AG Studio works with a trial watermark |
+| `OWNER_PASSWORD` (`backend/.env`) | Protecting a shared instance | Choose one | Leave empty locally: the Control Center is open |
+
+The backend tests need no keys at all: `cd backend && pytest -q` (188 pass; PayPal, Gemini and Channel3 are faked).
+
+### What to try: the three authorization outcomes
+
+A fresh database seeds the mandate from the demo video, **Desk tech (auto up to $100)**: retailers newegg.com,
+bestbuy.com, keychron.com, logitech.com and anker.com; Electronics; at most $150 per item and 2 per purchase; $400 budget;
+purchases up to $100 that pass every rule are auto-authorized.
+
+Open **Reference agent**, keep **Live retailers · Channel3** and that mandate selected, and ask:
+
+1. *"Logitech MX Master 3S wireless mouse. Pick the cheapest offer."* An allowed offer under $100 (the video got newegg.com,
+   $62.99) is **auto-authorized**. **Pay with PayPal** → **Continue to PayPal Checkout** → approve as the Sandbox buyer.
+   Back in PACT the server confirms the approval with PayPal, re-checks everything and **captures automatically** (no
+   Capture click): a real Sandbox capture ID with status COMPLETED. **Continue to <retailer>** is only a handoff to the
+   retailer's own checkout; PACT places no retailer order and Sandbox money never reaches the retailer.
+2. *"Keychron K8 QMK wireless mechanical keyboard, version 2, from Best Buy."* An allowed offer between $100 and $150
+   passes every rule but **needs your approval**. **Review & authorize** shows the fingerprint your approval is bound to.
+3. *"Logitech MX Master 3S wireless mouse from 6ave.com."* A retailer that is not allowed (in the video also over the item
+   cap and the budget) is **blocked**: every failed rule is listed and there is no approve button and no PayPal order.
+
+Live prices and retailers change, so an offer can land in a different outcome than in the video; the reasons shown on
+screen always say why. Without a Channel3 key, select **Demo Store** and the *Q1 Developer Equipment* mandate: a $34.99
+USB-C hub needs approval, and "PlayStation 5" is blocked (prohibited keyword and merchant). Edit that mandate to
+auto-authorize up to $100 to see the third outcome.
+
+Then: **Agents → Connect an agent** and run the MCP example agent with its key ([Connect any AI agent](#connect-any-ai-agent-agent-gateway--mcp)),
+**Analytics** (AG Studio), and **Audit Trail**.
 
 ## Connect any AI agent (Agent Gateway + MCP)
 
@@ -61,8 +117,8 @@ The built-in Gemini shopping assistant is PACT's **reference agent**: it uses th
 Agent Gateway / MCP `search_catalog` tool) and normalizes each retailer offer into a catalog item: merchant = retailer
 domain, the real USD price, availability, brand and the buy link. Then the usual rules apply:
 
-- The mandate decides which retailers are allowed. A seeded mandate, *Live retailers (Channel3): desk tech under $100*,
-  allows bestbuy.com, keychron.com, anker.com, logitech.com and newegg.com; anything else is blocked.
+- The mandate decides which retailers are allowed. A seeded mandate, *Desk tech (auto up to $100)*,
+  allows newegg.com, bestbuy.com, keychron.com, logitech.com and anker.com; anything else is blocked.
 - The approval fingerprint covers the exact retailer listing. Before approval, before the PayPal order and before capture,
   PACT re-reads the offer from Channel3. A changed price, stock, retailer or listing voids the approval; if Channel3 cannot
   be reached the step is refused (fail closed).
@@ -294,13 +350,16 @@ PAYPAL_CURRENCY=USD
 APP_BASE_URL=http://localhost:5173  # where PayPal sends the buyer back
 CORS_ORIGINS=http://localhost:5173
 OWNER_PASSWORD=                     # empty = open local demo; set it for anything reachable by others
+CHANNEL3_API_KEY=                   # optional: live retailer offers; empty = Demo Store only
 ```
+
+Optional `frontend/.env` (copy `frontend/.env.example`): `VITE_AG_STUDIO_LICENSE_KEY=` removes the AG Studio trial watermark.
 
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-The database, catalog and two demo mandates are created on first start. Older `pact.db` files are migrated in place (columns are added, never dropped).
+The database, the Demo Store's offers and three mandates (including the video's *Desk tech (auto up to $100)*) are created on first start. Older `pact.db` files are migrated in place (columns are added, never dropped).
 
 ### 2. Frontend (development)
 
@@ -344,20 +403,21 @@ Fixes, in order of reliability:
 
 Do not "fix" this by changing `PAYPAL_CURRENCY` to a different currency for the same prices: PACT will not switch currencies on its own, because that would change what the user approved.
 
-## Judge demo (about 3 minutes)
+## More to try
 
-This is the flow in the final video. A fresh database seeds three mandates (*Live retailers (Channel3)*, *Q1 Developer Equipment*, *Engineering Books*) and the Demo Store's offers; create the demo mandate first.
+The three outcomes are in [For judges](#what-to-try-the-three-authorization-outcomes). Beyond them:
 
-1. **Mandates → New mandate:** *Home Office Essentials*, $200 budget, merchant TechHub, category Electronics, max $100 per item, max quantity 2.
-2. **Reference agent → Demo Store** (the fixed-price connector; Live retailers is the default): "Order the NuPhy Halo75 V2 wireless keyboard for my desk." → $125, **blocked** (unit price). No approve button, no PayPal order.
-3. **Reference agent:** "I need a wireless mechanical keyboard for coding, under $100." → Keychron K8 Pro, $89, 10/10 rules → **Review & authorize** → **Approve $89.00** → **Continue to PayPal Checkout** → approve as the Sandbox buyer → back in PACT the payment is recorded automatically: the server confirms the buyer's approval with PayPal, re-checks everything and captures → real capture ID, `COMPLETED`. (Approving now opens PayPal Checkout directly.)
-4. **Invalidation:** ask for one more K8 Pro and approve it, then **Catalog → change price** to $99.50. The approval becomes **Approval expired** with the change listed.
-5. **Any agent:** **Agents → Connect an agent**, grant the mandate, then run `integrations/mcp/example_agent.py` with the key (see above). Over-limit requests are refused; in-policy ones wait on the Agents page.
-6. **Live retailers (Channel3):** **Reference agent → Live retailers · Channel3**, mandate *Live retailers*, ask for "Anker 7-in-1 USB-C hub" → a real retailer offer → approve → PayPal → **Continue to <retailer>**. A retailer not on the mandate is blocked.
-7. **Analytics:** the AG Studio dashboard; click a chart to cross-filter, or **Edit dashboard** → AI Assistant → "Where did the guardrail save money?".
-8. **Audit Trail:** every step, including agent requests, refusals, Channel3 searches and offer re-checks, and retailer handoffs.
+1. **Approval invalidation:** with **Demo Store** and *Q1 Developer Equipment*, ask for the USB-C hub, then
+   **Catalog → change price** on it. The pending request becomes **Approval expired** with the change listed. Live
+   Channel3 prices cannot be edited; they are re-read from Channel3 before approval, order and capture instead.
+2. **Any agent:** **Agents → Connect an agent**, grant a mandate, then run `integrations/mcp/example_agent.py` with the
+   key. Over-limit requests are refused; in-policy ones wait on the Agents page.
+3. **Analytics:** the AG Studio dashboard; click a chart to cross-filter, or **Edit dashboard** → AI Assistant → "Where
+   did the guardrail save money?".
+4. **Audit Trail:** every step, including agent requests, refusals, Channel3 searches and offer re-checks, and retailer
+   handoffs.
 
-See [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the narration and [docs/DEVPOST.md](docs/DEVPOST.md) for the submission text.
+See [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the video's narration and [docs/DEVPOST.md](docs/DEVPOST.md) for the submission text.
 
 ## Tests
 
@@ -366,7 +426,7 @@ cd backend && pytest -v
 cd frontend && npm ci && npm run build
 ```
 
-186 backend tests (2026-11-12: `186 passed`) cover the policy engine as pure unit tests (every rule, quantity boundaries, Decimal precision, currency), AI output validation, Gemini HTTP errors/quota/timeouts/safety blocks against a stubbed endpoint (malformed JSON, wrong types, unknown product IDs, out-of-range quantities, injected fields, fallback reasons), a fully prompt-injected AI being blocked, the full payment lifecycle against an in-memory PayPal fake (capture before buyer approval, order amount/currency/reference mismatches, missing capture ID, PENDING and DECLINED captures, amount mismatch, timeouts with idempotent retry and reconciliation, concurrent capture lock, duplicate capture), approval invalidation (mandate edits, pausing, catalog price drift, tampered rows), cancellation and reopen, audit redaction, Sandbox-only enforcement, the Agent Gateway (scoped keys, revocation, no approve/capture route, idempotent requests), the MCP server, the Gemini backup model on 429/503, owner sign-in (protected routes, HttpOnly cookie, forged/expired tokens, throttling, fail-closed when required but unset), Channel3 (normalization, key only in the header, upstream errors, mandate enforcement, offer bound into the fingerprint, price/stock/listing drift voiding approvals, fail-closed re-checks, rotating tracking ids, capture then retailer handoff, agents never seeing buy links), and the AG Studio dataset and agent proxy (paid counts only verified captures; Studio items to Gemini function calling and back; key stays server-side). Tests never touch `pact.db`, Gemini, OpenAI or PayPal.
+188 backend tests (2026-11-12: `188 passed`) cover the policy engine as pure unit tests (every rule, quantity boundaries, Decimal precision, currency), AI output validation, Gemini HTTP errors/quota/timeouts/safety blocks against a stubbed endpoint (malformed JSON, wrong types, unknown product IDs, out-of-range quantities, injected fields, fallback reasons), a fully prompt-injected AI being blocked, the full payment lifecycle against an in-memory PayPal fake (capture before buyer approval, order amount/currency/reference mismatches, missing capture ID, PENDING and DECLINED captures, amount mismatch, timeouts with idempotent retry and reconciliation, concurrent capture lock, duplicate capture), approval invalidation (mandate edits, pausing, catalog price drift, tampered rows), cancellation and reopen, audit redaction, Sandbox-only enforcement, the Agent Gateway (scoped keys, revocation, no approve/capture route, idempotent requests), the MCP server, the Gemini backup model on 429/503, owner sign-in (protected routes, HttpOnly cookie, forged/expired tokens, throttling, fail-closed when required but unset), Channel3 (normalization, key only in the header, upstream errors, mandate enforcement, offer bound into the fingerprint, price/stock/listing drift voiding approvals, fail-closed re-checks, rotating tracking ids, capture then retailer handoff, agents never seeing buy links), and the AG Studio dataset and agent proxy (paid counts only verified captures; Studio items to Gemini function calling and back; key stays server-side). Tests never touch `pact.db`, Gemini, OpenAI or PayPal.
 
 ## Deployment (Render)
 
@@ -405,7 +465,7 @@ HANDOFF.md        current state, verified results, next steps
 
 ## Demo video
 
-[`demo/pact-hackathon-final.mp4`](demo/pact-hackathon-final.mp4) in this repository: 2:24, 1920x1080 H.264 + AAC stereo, narrated (Google Gemini TTS) and captioned (`demo/pact-demo-assets/captions.srt`). Narration with timestamps: [`demo/pact-narration.txt`](demo/pact-narration.txt). Not uploaded to YouTube or Vimeo.
+[`demo/pact-hackathon-final.mp4`](demo/pact-hackathon-final.mp4) in this repository: 2:35, 1920x1080 H.264 + AAC stereo, narrated (Google Gemini TTS) and captioned (`demo/pact-demo-assets/captions.srt`). Narration with timestamps: [`demo/pact-narration.txt`](demo/pact-narration.txt). Not uploaded to YouTube or Vimeo.
 
 ## License
 

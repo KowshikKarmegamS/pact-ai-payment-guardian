@@ -39,8 +39,8 @@
    "to": "end",
    "fromOffset": 0.0,
    "toOffset": 0.0,
-   "say": "Set your rules once. This mandate allows desk tech from five retailers, and lets Pact authorize anything up to one hundred dollars on its own.",
-   "caption": "Set your rules once.|This mandate allows desk tech from five retailers,|and lets PACT authorize anything up to $100 on its own."
+   "say": "Set your rules once. This mandate allows desk tech from five retailers, at most one hundred fifty dollars an item. Anything up to one hundred dollars is authorized automatically.",
+   "caption": "Set your rules once.|This mandate allows desk tech from five retailers, at most $150 an item.|Anything up to $100 is authorized automatically."
   },
   {
    "id": "v3-auto",
@@ -69,8 +69,8 @@
    "to": "end",
    "fromOffset": 0.0,
    "toOffset": 0.0,
-   "say": "The moment PayPal confirms, Pact captures automatically: a real capture I D, completed, for the exact amount. Then the buyer continues to the retailer.",
-   "caption": "The moment PayPal confirms, PACT captures automatically:|a real capture ID, completed, for the exact amount.|Then the buyer continues to the retailer.",
+   "say": "The moment PayPal confirms, Pact captures automatically: a real Sandbox capture I D, completed, for the exact amount. This is Sandbox money, so no Newegg order is placed. Pact only hands the buyer off to Newegg's own checkout.",
+   "caption": "The moment PayPal confirms, PACT captures automatically:|a real Sandbox capture ID, completed, for the exact amount.|This is Sandbox money, so no Newegg order is placed.|PACT only hands the buyer off to Newegg's own checkout.",
    "zoom": [
     330,
     40,
@@ -104,8 +104,8 @@
    "to": "end",
    "fromOffset": -0.8,
    "toOffset": 0.0,
-   "say": "And a retailer I never allowed is simply blocked. There is no approve button to override it.",
-   "caption": "And a retailer I never allowed is simply blocked.|There is no approve button to override it."
+   "say": "And this offer is blocked outright: a retailer I never allowed, over the item cap, and over budget. There is no approve button to override it.",
+   "caption": "And this offer is blocked outright:|a retailer I never allowed, over the item cap, and over budget.|There is no approve button to override it."
   },
   {
    "id": "14a-connect",
@@ -123,8 +123,8 @@
    "from": "start",
    "to": "end",
    "fit": "pad",
-   "say": "Claude, ChatGPT or your own agent use Pact's A P I or M C P server. Told money is no object, this Gemini agent still gets a no.",
-   "caption": "Claude, ChatGPT or your own agent|use PACT's API or MCP server.|Told money is no object,|this Gemini agent still gets a no."
+   "say": "Any agent can call Pact through its REST A P I or its M C P server. This Gemini agent connects over M C P, is told money is no object, and still gets a no.",
+   "caption": "Any agent can call PACT through its REST API|or its MCP server. This Gemini agent connects over MCP,|is told money is no object,|and still gets a no."
   },
   {
    "id": "v3-analytics",

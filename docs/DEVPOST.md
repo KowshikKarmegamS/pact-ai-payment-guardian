@@ -3,10 +3,21 @@
 ## Links
 
 - **Repository:** https://github.com/KowshikKarmegamS/pact-ai-payment-guardian
-- **Demo video (2:24, in the repository):** https://github.com/KowshikKarmegamS/pact-ai-payment-guardian/blob/main/demo/pact-hackathon-final.mp4
+- **Demo video (2:35, in the repository):** https://github.com/KowshikKarmegamS/pact-ai-payment-guardian/blob/main/demo/pact-hackathon-final.mp4
   (direct file: https://github.com/KowshikKarmegamS/pact-ai-payment-guardian/raw/main/demo/pact-hackathon-final.mp4).
   Devpost's video field expects YouTube, Vimeo or Youku: upload this same file there and paste that link.
 - **Live app:** https://pact-ai-payment-guardian.onrender.com (Render free plan, PayPal Sandbox). The Control Center requires the owner password; share it with judges privately, never in the repository. The instance sleeps when idle (first load can take about a minute) and its data resets on restart.
+
+## Testing instructions (paste into Devpost's private judges-only field, never into the repository)
+
+```text
+Live app: https://pact-ai-payment-guardian.onrender.com  (free plan: first load after idle can take ~1 minute)
+Owner password (Control Center sign-in): <OWNER_PASSWORD>
+PayPal Sandbox buyer for checkout: <sandbox personal account email> / <its password>
+  (PayPal Sandbox only: no real money. Find it at developer.paypal.com > Testing Tools > Sandbox Accounts > View/Edit.)
+What to try: README > "For judges: access and testing" (three prompts: auto-authorized, needs approval, blocked).
+Run locally instead: README > "Run it locally"; every key is free, and the tests need none.
+```
 
 ## Tagline
 

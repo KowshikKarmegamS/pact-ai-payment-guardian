@@ -6,13 +6,13 @@
 
 | Item | State | How to check |
 |---|---|---|
-| Backend tests | **186 passed** (3 deprecation warnings from Starlette) | `cd backend && pytest -q` |
+| Backend tests | **188 passed** (3 deprecation warnings from Starlette) | `cd backend && pytest -q` |
 | Frontend production build | **passes** (2084 modules, Vite) | `cd frontend && npm run build` |
 | PayPal Sandbox end to end | **verified live**: order `1TB76166AJ238330L`, capture `7HT24116Y1448214M`, COMPLETED, 89.00 USD (final demo run); earlier capture `9XY78096Y6982133J`, 99.99 USD, with duplicate capture prevented | Transactions page / Authorization Receipt |
 | AI recommender | **Gemini `gemini-3.5-flash`** works with the current key (Google reports `gemini-3.6-flash`); backup `gemini-3.5-flash-lite` works and is tried once on 429/500/503; otherwise the labelled keyword fallback ("not AI") | `GET /api/status`; sidebar "Recommender" |
 | Agent Gateway + MCP | **verified live**: real Gemini agent over MCP; over-limit Sony request blocked, $34.99 hub request awaiting approval | `integrations/mcp/example_agent.py` |
 | Owner sign-in | **implemented and tested** (unit tests + manual browser test): wrong password rejected, sign-in unlocks, sign-out locks | set `OWNER_PASSWORD` |
-| Demo video | **final (v3)**: `demo/pact-hackathon-final.mp4`, 2:24 (143.6 s), 1920x1080 H.264 30 fps + AAC stereo, about 19.6 MB, decodes with zero errors. Shows the three authorization outcomes on live Channel3 offers (auto-authorized $62.99 at newegg.com with automatic PayPal capture `96G68832T36673354` and retailer handoff; $109.99 keyboard needing approval; $544.95 at 6ave.com blocked), agent connection, the fingerprint card, AG Studio analytics and the Channel3 + Demo Store connectors. Takes `v3*` in `demo/tools/record.mjs` | `ffprobe`, `ffmpeg -v error -i … -f null -` |
+| Demo video | **final (v3)**: `demo/pact-hackathon-final.mp4`, 2:35 (154.7 s), 1920x1080 H.264 30 fps + AAC stereo, about 20.1 MB, decodes with zero errors. Shows the three authorization outcomes on live Channel3 offers (auto-authorized $62.99 at newegg.com with automatic PayPal capture `96G68832T36673354` and retailer handoff; $109.99 keyboard needing approval; $544.95 at 6ave.com blocked by three hard rules: merchant, item cap, budget). Narration says the capture is Sandbox money and that no retailer order is placed; the MCP claim was re-run on 2026-11-12 with `integrations/mcp/example_agent.py` (Gemini over MCP stdio, refused at the $100 item limit), agent connection, the fingerprint card, AG Studio analytics and the Channel3 + Demo Store connectors. Takes `v3*` in `demo/tools/record.mjs` | `ffprobe`, `ffmpeg -v error -i … -f null -` |
 | Screenshots | **current** dark UI, 9 images in `docs/screenshots/` (7 desktop 1440x900, 2 mobile 390x844 @2x) | README → Screenshots |
 | Render deployment | **live** at https://pact-ai-payment-guardian.onrender.com (free plan; data resets on restart/sleep). Verified: health 200, PayPal Sandbox OAuth OK, Gemini configured, owner routes 401 until sign-in, agent gateway 401 without key, sign-in screen renders | `/api/status?check_paypal=true` |
 | Merchant connectors | `MerchantConnector` interface with Channel3 as the live connector (the Northwind Shopify-format demo store was removed in the lean-up; the submitted video still shows it) | `GET /api/connectors` |
@@ -79,7 +79,7 @@ PayPal capture ID with status COMPLETED and a matching amount and currency.
 
 0. On the live site, sign in and confirm Catalog shows the Channel3 search (`CHANNEL3_API_KEY` and
    `VITE_AG_STUDIO_LICENSE_KEY` are set in Render).
-1. Watch and listen to `demo/pact-hackathon-final.mp4` once, end to end (listen to the word "PACT" at 2:12).
+1. Watch and listen to `demo/pact-hackathon-final.mp4` once, end to end (listen to the word "PACT" at 2:23).
 2. Upload the video to YouTube (unlisted) or Vimeo and paste that link into Devpost (`docs/DEVPOST.md` has the
    repository and in-repo video links).
 3. Not yet verified on the live site (needs the owner password): a signed-in Gemini recommendation and a PayPal Sandbox payment end to end.

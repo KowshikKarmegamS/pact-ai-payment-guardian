@@ -173,7 +173,9 @@ function verdict(p: Proposal, failedCount: number, total: number): { tone: Tone;
     case 'CAPTURE_PENDING':
       return { tone: 'warn', icon: <Clock className="h-5 w-5" />, title: 'Capture requested; PayPal has not confirmed completion', text: p.status_reason ?? 'Retrying is safe: the request is idempotent and cannot double-charge.' };
     case 'CAPTURED':
-      return { tone: 'ok', icon: <CheckCircle2 className="h-5 w-5" />, title: 'Payment captured and verified with PayPal', text: 'PayPal returned a completed capture for exactly the approved amount.' };
+      return { tone: 'ok', icon: <CheckCircle2 className="h-5 w-5" />, title: 'Payment captured and verified with PayPal', text: p.purchase_url
+        ? `PayPal Sandbox returned a completed capture for exactly the approved amount. No order has been placed at ${p.merchant}: the retailer handoff only opens its own checkout.`
+        : 'PayPal Sandbox returned a completed capture for exactly the approved amount.' };
     case 'APPROVAL_EXPIRED':
       return { tone: 'caution', icon: <ShieldAlert className="h-5 w-5" />, title: 'Approval invalidated: something changed after it was evaluated', text: 'A change can never silently inherit an old approval. A fresh evaluation and a new approval are required.' };
     case 'PAYPAL_CANCELLED':

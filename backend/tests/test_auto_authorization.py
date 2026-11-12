@@ -108,6 +108,22 @@ def test_hard_violations_are_blocked_without_an_approval_override(client, db_ses
     assert client.post(f"/api/payments/{p['id']}/create-order").status_code == 409
 
 
+def test_over_auto_limit_with_hard_violations_is_blocked_not_escalated(client, db_session, auto_mandate):
+    # The demo's third outcome: an offer above the auto limit that also breaks hard rules (merchant, item cap, budget)
+    # must be BLOCKED with every violation listed, never offered for owner approval as a mere escalation.
+    offer = Product(name="Wireless Mouse", description="", price=Decimal("544.95"), category="Electronics",
+                    merchant="6ave.com", in_stock=True)
+    db_session.add(offer)
+    db_session.commit()
+    p = _propose(client, auto_mandate, offer)
+    assert p["status"] == "POLICY_REJECTED" and p["authorization_decision"] == "BLOCKED"
+    failed = {c["rule"] for c in p["policy_checks"] if not c["passed"]}
+    assert {"merchant_allowlist", "max_unit_price", "budget"} <= failed
+    assert "auto-authorization limit" not in p["decision_reason"]
+    assert client.post(f"/api/proposals/{p['id']}/approve", json={"expected_fingerprint": p["proposal_fingerprint"]}).status_code == 409
+    assert client.post(f"/api/payments/{p['id']}/create-order").status_code == 409
+
+
 def test_expired_mandate_and_revoked_agent_are_blocked(client, db_session, auto_mandate, sample_product):
     agent = client.post("/api/agents", json={"name": "Shopper", "mandate_ids": [auto_mandate.id]}).json()
     h = {"Authorization": f"Bearer {agent['api_key']}"}
@@ -319,3 +335,15 @@ def test_analytics_shows_how_each_purchase_was_authorized(client, db_session, au
     auto = next(r for r in rows if r["authorization"] == "Auto-authorized")
     assert auto["authorized_amount"] == 34.99 and auto["paid_amount"] == 0.0
     assert all(r["authorized_amount"] == 0.0 for r in rows if r["authorization"] != "Auto-authorized")
+
+
+def test_fresh_database_seeds_the_demo_videos_auto_authorization_mandate(db_session):
+    from app.catalog import seed_mandates
+
+    seed_mandates(db_session)
+    m = db_session.query(Mandate).filter(Mandate.name == "Desk tech (auto up to $100)").one()
+    assert m.authorization_mode == "auto_approve_within_limits" and m.max_auto_approve_amount == Decimal("100.00")
+    assert m.restrictions["max_price_per_item"] == 150.0 and m.max_budget == Decimal("400.00")
+    assert set(m.allowed_merchants) == {"newegg.com", "bestbuy.com", "keychron.com", "logitech.com", "anker.com"}
+    others = db_session.query(Mandate).filter(Mandate.id != m.id).all()
+    assert others and all(o.authorization_mode == "approval_required" for o in others)

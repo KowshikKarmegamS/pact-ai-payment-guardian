@@ -5,15 +5,18 @@ from sqlalchemy.orm import Session
 
 SEED_MANDATES = [
     {
-        # Retailer domains as returned by Channel3 live search. Any other retailer is blocked.
-        "name": "Live retailers (Channel3): desk tech under $100",
-        "max_budget": Decimal("300.00"),
-        "allowed_merchants": ["bestbuy.com", "keychron.com", "anker.com", "logitech.com", "newegg.com"],
+        # The demo video's mandate. Retailer domains as returned by Channel3 live search; any other retailer is blocked.
+        # Purchases that pass every rule and cost at most $100 are auto-authorized; $100-$150 items need the owner.
+        "name": "Desk tech (auto up to $100)",
+        "max_budget": Decimal("400.00"),
+        "allowed_merchants": ["newegg.com", "bestbuy.com", "keychron.com", "logitech.com", "anker.com"],
         "allowed_categories": ["Electronics"],
         "restrictions": {
-            "max_price_per_item": 100.00,
+            "max_price_per_item": 150.00,
             "max_quantity": 2,
         },
+        "authorization_mode": "auto_approve_within_limits",
+        "max_auto_approve_amount": Decimal("100.00"),
         "is_active": True,
     },
     {
@@ -55,6 +58,8 @@ def seed_mandates(db: Session):
                 allowed_categories=m_data["allowed_categories"],
                 restrictions=m_data["restrictions"],
                 is_active=m_data["is_active"],
+                authorization_mode=m_data.get("authorization_mode", "approval_required"),
+                max_auto_approve_amount=m_data.get("max_auto_approve_amount"),
             )
             db.add(mandate)
         db.commit()

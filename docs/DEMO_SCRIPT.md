@@ -1,6 +1,6 @@
 # PACT demo script
 
-The submitted video is [`demo/pact-hackathon-final.mp4`](../demo/pact-hackathon-final.mp4): 2:24, 1920x1080, captioned,
+The submitted video is [`demo/pact-hackathon-final.mp4`](../demo/pact-hackathon-final.mp4): 2:35, 1920x1080, captioned,
 narrated with Google Gemini text-to-speech. All app footage is the real app on one clean database, recorded in
 story order with live Gemini recommendations and a real PayPal Sandbox payment. `demo/tools/` rebuilds it
 (see `HANDOFF.md`).
@@ -12,18 +12,18 @@ story order with live Gemini recommendations and a real PayPal Sandbox payment. 
 | 0:00 | Title card | PACT. The payment authorization gateway for AI agents. Let any agent shop for you, only within the limits you set. |
 | 0:08 | Problem card | AI agents can now shop for us. But to pay, we hand them a card with no limits. One injected prompt, and real money moves before anyone approves it. |
 | 0:18 | Control Center | PACT sits between any AI agent and PayPal. Agents can only ask. A deterministic policy engine authorizes, a human approves, and PayPal executes. |
-| 0:29 | Mandates → edit: auto-authorize up to $100 | Set your rules once. This mandate allows desk tech from five retailers, and lets PACT authorize anything up to $100 on its own. |
-| 0:38 | Reference agent (Live retailers · Channel3): MX Master 3S → newegg.com $62.99, **auto-authorized** | An agent asks for a mouse. Channel3 searches real retailers, Gemini picks the cheapest offer, and every rule passes, so PACT authorizes it by itself. No approval click. |
-| 0:50 | PayPal Sandbox Checkout | PACT creates a real PayPal Sandbox order, and the buyer approves it in PayPal Checkout. |
-| 0:56 | Captured automatically (`96G68832T36673354`) → Continue to newegg.com | The moment PayPal confirms, PACT captures automatically: a real capture ID, completed, for the exact amount. Then the buyer continues to the retailer. |
-| 1:06 | Keychron K8 QMK at bestbuy.com $109.99 → **needs approval** (above auto limit) | A $109.99 keyboard passes every rule too, but it is above the auto limit. So PACT stops and asks, and my approval is sealed with a fingerprint. |
-| 1:16 | Fingerprint card (real API responses) | A SHA-256 hash of the product, merchant, price, quantity, mandate rules and requesting agent. A forged approval is refused, and the hash is checked again before every PayPal step. |
-| 1:29 | MX Master 3S at 6ave.com $544.95 → **blocked** | And a retailer I never allowed is simply blocked. There is no approve button to override it. |
-| 1:35 | Agents → Connect an agent (key masked) | Connecting an outside agent takes seconds. It gets one mandate and its own key, shown once and stored only as a hash. |
-| 1:43 | MCP card (real `example_agent.py` transcript) | Claude, ChatGPT or your own agent use PACT's API or MCP server. Told money is no object, this Gemini agent still gets a no. |
-| 1:55 | Analytics (AG Studio) | Every decision is audited and charted with AG Studio. Its own AI agents can analyze the spending, but they can never approve or pay. |
-| 2:03 | Architecture card: Channel3 + Demo Store + your platform | Any platform plugs in with one connector that returns offers. The policy engine, the fingerprint and the PayPal flow never change. |
-| 2:12 | Closing card | Agents request. The policy engine authorizes. A human approves. PayPal executes. PACT. The payment authorization gateway for AI agents. |
+| 0:29 | Mandates → edit: auto-authorize up to $100 | Set your rules once. This mandate allows desk tech from five retailers, at most $150 an item. Anything up to $100 is authorized automatically. |
+| 0:41 | Reference agent (Live retailers · Channel3): MX Master 3S → newegg.com $62.99, **auto-authorized** | An agent asks for a mouse. Channel3 searches real retailers, Gemini picks the cheapest offer, and every rule passes, so PACT authorizes it by itself. No approval click. |
+| 0:53 | PayPal Sandbox Checkout | PACT creates a real PayPal Sandbox order, and the buyer approves it in PayPal Checkout. |
+| 0:59 | Captured automatically (`96G68832T36673354`) → Continue to newegg.com | The moment PayPal confirms, PACT captures automatically: a real Sandbox capture ID, completed, for the exact amount. This is Sandbox money, so no Newegg order is placed. PACT only hands the buyer off to Newegg's own checkout. |
+| 1:14 | Keychron K8 QMK at bestbuy.com $109.99 → **needs approval** (above auto limit) | A $109.99 keyboard passes every rule too, but it is above the auto limit. So PACT stops and asks, and my approval is sealed with a fingerprint. |
+| 1:23 | Fingerprint card (real API responses) | A SHA-256 hash of the product, merchant, price, quantity, mandate rules and requesting agent. A forged approval is refused, and the hash is checked again before every PayPal step. |
+| 1:36 | MX Master 3S at 6ave.com $544.95 → **blocked** | And this offer is blocked outright: a retailer I never allowed, over the item cap, and over budget. There is no approve button to override it. |
+| 1:46 | Agents → Connect an agent (key masked) | Connecting an outside agent takes seconds. It gets one mandate and its own key, shown once and stored only as a hash. |
+| 1:54 | MCP card (real `example_agent.py` transcript) | Any agent can call PACT through its REST API or its MCP server. This Gemini agent connects over MCP, is told money is no object, and still gets a no. |
+| 2:06 | Analytics (AG Studio) | Every decision is audited and charted with AG Studio. Its own AI agents can analyze the spending, but they can never approve or pay. |
+| 2:14 | Architecture card: Channel3 + Demo Store + your platform | Any platform plugs in with one connector that returns offers. The policy engine, the fingerprint and the PayPal flow never change. |
+| 2:23 | Closing card | Agents request. The policy engine authorizes. A human approves. PayPal executes. PACT. The payment authorization gateway for AI agents. |
 
 ## Auto-authorization: three outcomes (about 2 minutes)
 
